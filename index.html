@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNS Corporation - 업무지원 페이지 로그인</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="background-image">
+        <img src="backpage.jpg" alt="Background" class="bg-img">
+    </div>
+    
+    <div class="login-container">
+        <div class="login-form">
+            <div class="logo">
+                <img src="logo.png" alt="CNS Corporation" class="logo-img">
+            </div>
+            
+            <h1 class="title">업무지원 페이지 로그인</h1>
+            <div class="title-line"></div>
+            
+            <form id="loginForm" class="form">
+                <div class="input-group">
+                    <input type="text" id="userId" placeholder="ID" required>
+                </div>
+                
+                <div class="input-group">
+                    <input type="password" id="userPassword" placeholder="비밀번호" required>
+                </div>
+                
+                <div class="checkbox-group">
+                    <input type="checkbox" id="keepLogin">
+                    <label for="keepLogin">로그인 기능 유지</label>
+                </div>
+                
+                <button type="submit" class="login-btn">로그인</button>
+                
+                <div class="signup-section">
+                    <button type="button" id="signupBtn" class="signup-btn">회원가입</button>
+                </div>
+                
+                <div id="errorMessage" class="error-message"></div>
+            </form>
+            
+            <div class="bottom-line"></div>
+        </div>
+    </div>
+
+    <script  type="module" src="script.js"></script>
+</body>
+</html>

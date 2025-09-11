@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WSD - Calendar</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div class="left">
+          <div class="brand">
+            <span class="brand-mark"></span>
+            <span class="brand-text">소송일정표</span>
+          </div>
+          <button class="btn" id="btn-today">오늘</button>
+          <div class="month-nav">
+            <button class="icon-btn" id="btn-prev" aria-label="이전 달">◀</button>
+            <button class="icon-btn" id="btn-next" aria-label="다음 달">▶</button>
+            <h1 class="month-title" id="month-title">2025년 1월</h1>
+          </div>
+        </div>
+        <div class="right">
+          <input type="search" class="search" placeholder="검색" />
+          <button class="primary-btn">+ 만들기</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <aside class="sidebar">
+          <div class="mini-month">
+            <div class="mini-header">
+              <span id="mini-month-label">2025년 1월</span>
+              <div class="mini-nav">
+                <button class="icon-btn sm" id="mini-prev">◀</button>
+                <button class="icon-btn sm" id="mini-next">▶</button>
+              </div>
+            </div>
+            <div class="mini-grid" id="mini-grid"></div>
+          </div>
+
+          <div class="my-cals">
+            <div class="section-title">업무별 캘린더 <button class="icon-btn sm">＋</button></div>
+            <ul class="cal-list">
+              <li><label><input type="checkbox" checked data-color="#1a7f37" />제소사건현황</label></li>
+              <li><label><input type="checkbox" checked data-color="#1f6feb" />피소사건현황</label></li>
+              <li><label><input type="checkbox" checked data-color="#c026d3" />집행사건현황</label></li>
+              <li><label><input type="checkbox" checked data-color="#ea580c" />경매-공매현황</label></li>
+              <li><label><input type="checkbox" checked data-color="#6b7280" />채무불이행신청현황</label></li>
+              <li><label><input type="checkbox" checked data-color="#6b7280" />신용정보의뢰현황</label></li>
+            </ul>
+          </div>
+
+          
+        </aside>
+
+        <main class="grid">
+          <div class="grid-head">
+            <div>일요일</div>
+            <div>월요일</div>
+            <div>화요일</div>
+            <div>수요일</div>
+            <div>목요일</div>
+            <div>금요일</div>
+            <div>토요일</div>
+          </div>
+          <div class="grid-body" id="grid-body">
+            <!-- JS가 날짜 셀을 채웁니다 -->
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <script src="./script.js"></script>
+  </body>
+  </html>
+
+
+
+

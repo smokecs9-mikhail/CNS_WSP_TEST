@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="상업용(Retail/office) 부동산 가치 평가 결과 - 정확한 부동산 투자 분석 도구">
+    <meta name="keywords" content="부동산, 가치계산, 투자분석, NOI, CapRate, 상업용부동산">
+    <meta name="author" content="CNS Corporation">
+    <title>상업용(Retail/office) 부동산 가치 평가 결과</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>상업용(Retail/office) 부동산 가치 평가 결과</h1>
+            <div class="test-status">
+                CNS Corporation - 부동산 가치 평가 시스템
+            </div>
+        </header>
+
+        <main class="main-content">
+            <section class="input-section">
+                <form id="propertyForm" novalidate>
+                    <div class="form-group">
+                        <label for="propertyName">물건명:</label>
+                        <input type="text" id="propertyName" name="propertyName" 
+                               placeholder="평가할 부동산의 이름" required>
+                        <div class="help-text">평가할 부동산 물건의 이름</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="propertyAddress">물건 주소:</label>
+                        <input type="text" id="propertyAddress" name="propertyAddress" 
+                               placeholder="부동산의 주소를 입력">
+                        <div class="help-text">부동산의 주소를 입력</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="monthlyRent">월간 임대료 총액/월:</label>
+                        <input type="text" id="monthlyRent" name="monthlyRent" 
+                               placeholder="0" inputmode="numeric">
+                        <div class="help-text">전체 임대료 합계액 (Excluding VAT)</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="deposit">보증금 총액:</label>
+                        <input type="text" id="deposit" name="deposit" 
+                               placeholder="0" inputmode="numeric">
+                        <div class="help-text">전체 임대 보증금 합계액</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="adRevenue">광고수익/월:</label>
+                        <input type="text" id="adRevenue" name="adRevenue" 
+                               placeholder="0" inputmode="numeric">
+                        <div class="help-text">광고, 미디어와 관련해 발생 수익 (Excluding VAT)</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="parkingRevenue">주차수익/월:</label>
+                        <input type="text" id="parkingRevenue" name="parkingRevenue" 
+                               placeholder="0" inputmode="numeric">
+                        <div class="help-text">월별 주차시설내에서 발생하는 수익. (Excluding VAT)</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="otherRevenue">기타수익/월:</label>
+                        <input type="text" id="otherRevenue" name="otherRevenue" 
+                               placeholder="0" inputmode="numeric">
+                        <div class="help-text">자판기·부대시설 등 기타 부수적인 월간 고정 수익.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="managementFee">시설 관리비 총액/월:</label>
+                        <input type="text" id="managementFee" name="managementFee" 
+                               placeholder="0" inputmode="numeric">
+                        <div class="help-text">건물 유지·보수 등 임차인에게 청구하는 모든 시설 관련 금액.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="managementProfitRate">관리수익률(%):</label>
+                        <input type="number" id="managementProfitRate" name="managementProfitRate" 
+                               placeholder="0" step="0.1" min="0" max="100">
+                        <div class="help-text">시설 관리비를 기준으로 기대 수익률(%) 입력.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="salesYield">매매기준 수익률(%):</label>
+                        <div class="input-with-refresh">
+                            <input type="number" id="salesYield" name="salesYield" 
+                                   value="4.3" step="0.1" min="0" max="20">
+                            <span class="base-rate" id="baseRate">기준금리 조회중…</span>
+                            <button type="button" class="refresh-btn" id="refreshBaseRate">↻</button>
+                        </div>
+                        <div class="help-text">지역별로 거래 기준이 되는 자산수익률(%) 입력</div>
+                    </div>
+
+                    <!-- 등급 시스템 -->
+                    <div class="grade-section">
+                        <h3>등급 평가</h3>
+                        
+                        <div class="form-group">
+                            <label for="locationGrade">입지 등급 (1~5):</label>
+                            <select id="locationGrade" name="locationGrade" required>
+                                <option value="1">1등급지</option>
+                                <option value="2">2등급지</option>
+                                <option value="3">3등급지</option>
+                                <option value="4">4등급지</option>
+                                <option value="5">5등급지</option>
+                            </select>
+                            <div class="grade-description" id="locationGradeDesc"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="stabilityGrade">임대 안정성 (1~5):</label>
+                            <select id="stabilityGrade" name="stabilityGrade" required>
+                                <option value="1">1등급</option>
+                                <option value="2" selected>2등급</option>
+                                <option value="3">3등급</option>
+                                <option value="4">4등급</option>
+                                <option value="5">5등급</option>
+                            </select>
+                            <div class="grade-description" id="stabilityGradeDesc"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="accessibilityGrade">접근성 등급 (1~5):</label>
+                            <select id="accessibilityGrade" name="accessibilityGrade" required>
+                                <option value="1">1등급</option>
+                                <option value="2">2등급</option>
+                                <option value="3" selected>3등급</option>
+                                <option value="4">4등급</option>
+                                <option value="5">5등급</option>
+                            </select>
+                            <div class="grade-description" id="accessibilityGradeDesc"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="facilityGrade">시설 등급 (1~5):</label>
+                            <select id="facilityGrade" name="facilityGrade" required>
+                                <option value="1">1등급</option>
+                                <option value="2">2등급</option>
+                                <option value="3" selected>3등급</option>
+                                <option value="4">4등급</option>
+                                <option value="5">5등급</option>
+                            </select>
+                            <div class="grade-description" id="facilityGradeDesc"></div>
+                        </div>
+                    </div>
+
+                    <!-- 공실률 섹션 -->
+                    <div class="vacancy-section">
+                        <h3>공실률 정보</h3>
+                        
+                        <div class="form-group">
+                            <label for="currentVacancy">현재 공실률(%):</label>
+                            <input type="number" id="currentVacancy" name="currentVacancy" 
+                                   value="0" step="0.1" min="0" max="100">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="regionalVacancy">지역별 공실률(%):</label>
+                            <div class="vacancy-display">
+                                <span id="kosisRegion">-</span>
+                                <span id="kosisVacancy">N/A</span>
+                                <button type="button" class="refresh-btn" id="refreshKosis">↻</button>
+                                <button type="button" class="btn btn-secondary" id="manualKosis">수동 불러오기</button>
+                            </div>
+                            <div class="help-text">KOSIS_ 임대동향 지역별 공실률(중대형상가)</div>
+                        </div>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="submit" class="btn btn-primary">계산하기</button>
+                    </div>
+                </form>
+
+                <div class="error-message" id="errorMessage" role="alert" aria-live="polite"></div>
+            </section>
+
+            <section class="result-section">
+                <!-- Firebase 연결 상태 경고 메시지 -->
+                <div id="firebaseWarning" class="firebase-warning" style="display: none;">
+                    <div class="warning-content">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span class="warning-text">Firebase 연결되지 않음 - 데이터가 로컬에만 저장됩니다</span>
+                        <button id="retryFirebaseBtn2" class="retry-btn">재연결</button>
+                    </div>
+                </div>
+                
+                <h2 class="result-header">결과 히스토리</h2>
+                
+                <div class="loading" id="loading" role="status" aria-live="polite">
+                    <div class="spinner" aria-hidden="true"></div>
+                    <p>계산 중입니다...</p>
+                </div>
+
+                <div class="table-container">
+                    <table class="history-table" id="historyTable" role="table">
+                        <thead>
+                            <tr>
+                                <th class="checkbox-cell" scope="col">선택</th>
+                                <th scope="col">시간</th>
+                                <th scope="col">물건명</th>
+                                <th scope="col">입지등급</th>
+                                <th scope="col">임대안정성</th>
+                                <th scope="col">접근성등급</th>
+                                <th scope="col">시설등급</th>
+                                <th scope="col">Market Value</th>
+                                <th scope="col">Value-Add Potential</th>
+                                <th scope="col">HBU Value</th>
+                                <th scope="col">NOI</th>
+                                <th scope="col">CapRate(%)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody">
+                            <!-- 결과가 여기에 추가됩니다 -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="table-controls">
+                    <button class="btn btn-secondary" id="exportCsv">Export CSV</button>
+                    <button class="btn btn-danger" id="deleteSelected">선택 삭제</button>
+                    <button class="btn btn-danger" id="deleteAll">전체 삭제</button>
+                    <button class="btn btn-primary" id="loadSelected">선택 불러오기</button>
+                    <button class="btn btn-primary" id="loadResult">결과 불러오기</button>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>Copyright 2025. CNS Corporation. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <!-- 결과 모달 -->
+    <div id="resultModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>상업용(Retail/office) 부동산 가치 평가 결과</h2>
+                <span class="close" id="closeModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="result-info">
+                    <p><strong>물건명 :</strong> <span id="resultPropertyName">-</span></p>
+                    <p><strong>주소 :</strong> <span id="resultPropertyAddress">-</span></p>
+                </div>
+                
+                <div class="result-summary">
+                    <h3>요약</h3>
+                    <table class="result-table">
+                        <tr>
+                            <td>입지</td>
+                            <td id="resultLocationDesc">-</td>
+                        </tr>
+                        <tr>
+                            <td>임대안정성</td>
+                            <td id="resultStabilityDesc">-</td>
+                        </tr>
+                        <tr>
+                            <td>접근성</td>
+                            <td id="resultAccessibilityDesc">-</td>
+                        </tr>
+                        <tr>
+                            <td>시설</td>
+                            <td id="resultFacilityDesc">-</td>
+                        </tr>
+                        <tr>
+                            <td>Market Value</td>
+                            <td id="resultMarketValue">-</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="result-details">
+                    <h3>상세 정보</h3>
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <label>조사 담당자</label>
+                            <input type="text" id="investigatorName" placeholder="담당자명 입력">
+                        </div>
+                        <div class="detail-item">
+                            <label>조사일자</label>
+                            <input type="number" id="investigationYear" placeholder="년" min="2000" max="2100" style="width: 70px;">
+                            <span>년</span>
+                            <input type="number" id="investigationMonth" placeholder="월" min="1" max="12" style="width: 60px;">
+                            <span>월</span>
+                            <input type="number" id="investigationDay" placeholder="일" min="1" max="31" style="width: 60px;">
+                            <span>일</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>확인한 시설</label>
+                            <div class="checkbox-group">
+                                <label><input type="checkbox" name="facilities" value="실외환경"> 실외 환경</label>
+                                <label><input type="checkbox" name="facilities" value="주차접근로"> 주차/접근로</label>
+                                <label><input type="checkbox" name="facilities" value="교통유동상권"> 교통/유동/상권</label>
+                                <label><input type="checkbox" name="facilities" value="실내환경"> 실내 환경</label>
+                                <label><input type="checkbox" name="facilities" value="전기소방설비"> 전기/소방설비</label>
+                                <label><input type="checkbox" name="facilities" value="수도배관설비"> 수도/배관설비</label>
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <label>확인자</label>
+                            <input type="text" id="confirmerName" placeholder="확인자명 입력">
+                        </div>
+                    </div>
+                    
+                    <div class="opinion-section">
+                        <label for="opinionText">검토 의견</label>
+                        <textarea id="opinionText" rows="4" placeholder="검토 의견을 입력하세요..."></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="selectFont">폰트 선택(TTF/OTF 임베드)</button>
+                <button class="btn btn-primary" id="savePdf">PDF 저장</button>
+                <button class="btn btn-secondary" id="closeModalBtn">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- KOSIS API 선택 모달 -->
+    <div id="kosisModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>KOSIS 공실률 선택 (API)</h2>
+                <span class="close" id="closeKosisModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="search-section">
+                    <label for="kosisSearch">검색어:</label>
+                    <input type="text" id="kosisSearch" placeholder="지역명으로 검색">
+                </div>
+                <div class="kosis-list-container">
+                    <ul id="kosisList">
+                        <!-- KOSIS 데이터가 여기에 표시됩니다 -->
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="refreshKosisData">새로고침</button>
+                <button class="btn btn-primary" id="applyKosisData">적용</button>
+                <button class="btn btn-secondary" id="closeKosisModalBtn">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 폰트 선택 모달 -->
+    <div id="fontModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>폰트 선택 (TTF/OTF 임베드)</h2>
+                <span class="close" id="closeFontModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="font-upload-section">
+                    <label for="fontFileInput" class="font-upload-label">
+                        <div class="upload-area">
+                            <div class="upload-icon">📁</div>
+                            <p>TTF 또는 OTF 폰트 파일을 선택하세요</p>
+                            <p class="upload-hint">클릭하거나 드래그하여 파일을 업로드</p>
+                        </div>
+                    </label>
+                    <input type="file" id="fontFileInput" accept=".ttf,.otf" style="display: none;">
+                </div>
+                
+                <div class="font-preview-section">
+                    <h3>폰트 미리보기</h3>
+                    <div class="preview-container">
+                        <div class="preview-text" id="fontPreview">
+                            상업용(Retail/Office) 부동산 가치 평가 결과<br>
+                            물건명: 삼성타워 오피스텔<br>
+                            Market Value: 15,000 백만원<br>
+                            NOI: 1,200 백만원
+                        </div>
+                    </div>
+                    <div class="font-info" id="fontInfo">
+                        <p><strong>현재 폰트:</strong> <span id="currentFontName">시스템 기본 폰트</span></p>
+                        <p><strong>파일 크기:</strong> <span id="fontFileSize">-</span></p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="resetFont">기본 폰트로 리셋</button>
+                <button class="btn btn-primary" id="applyFont">폰트 적용</button>
+                <button class="btn btn-secondary" id="closeFontModalBtn">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- html2pdf.js 라이브러리 (한글 지원) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <script type="module" src="script.js"></script>
+</body>
+</html>

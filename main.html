@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNS Corporation - 업무지원 페이지</title>
+    <link rel="stylesheet" href="main.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 sidebar">
+                <div class="sidebar-content">
+                    <!-- Logo Section -->
+                    <div class="logo-section">
+                        <div class="logo-image">
+                            <img src="main.png" alt="CNS Corporation" class="logo-img">
+                        </div>
+                    </div>
+                    
+                    <!-- Navigation Menu -->
+                    <nav class="nav-menu">
+                        <ul class="nav-list">
+                            <li class="nav-item">
+                                <a href="#" class="nav-link" id="salesStatusMenu">
+                                    <i class="fas fa-chevron-right"></i>
+                                    영업현황표
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" class="nav-link" id="propertyCalculatorMenu">
+                                    <i class="fas fa-chevron-right"></i>
+                                    부동산가치계산기
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" class="nav-link" id="workScheduleMenu">
+                                    <i class="fas fa-chevron-right"></i>
+                                    소송일정표-작업중
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" class="nav-link">
+                                    <i class="fas fa-chevron-right"></i>
+                                    분할부과계산기-작업중
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" class="nav-link">
+                                    <i class="fas fa-chevron-right"></i>
+                                    OCR문서입력기-작업중
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                    
+                    <!-- User Profile Section -->
+                    <div class="user-profile">
+                        <div class="user-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="user-info">
+                            <div class="user-dept" id="userDept">접속자 부서 표시</div>
+                            <div class="user-name" id="userName">접속자 이름 표시</div>
+                        </div>
+                        <button id="logoutBtn" class="btn btn-outline-danger btn-sm sidebar-logout" title="로그아웃" aria-label="로그아웃">로그아웃</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content Area -->
+            <div class="col-md-9 col-lg-10 main-content">
+                <!-- Mobile Menu Toggle Button -->
+                <button id="mobileMenuToggle" class="mobile-menu-toggle" title="모바일 메뉴 열기/닫기" aria-label="모바일 메뉴 열기/닫기">
+                    <i class="fas fa-bars"></i>
+                </button>
+                
+                <!-- Mobile Overlay -->
+                <div id="mobileOverlay" class="mobile-overlay"></div>
+                
+                <div class="content-body">
+                    <!-- Main content will be displayed here -->
+                    <div class="welcome-message" id="welcomeMessage">
+                        <div style="position: relative; width: 100%; height: calc(100vh - 20px);">
+                            <img src="background.webp" alt="메인 이미지" style="width: 100%; height: 100%; object-fit: cover; display: block;" />
+                        </div>
+                    </div>
+                    <iframe id="contentFrame" src="" title="메인 콘텐츠 영역" aria-label="메인 콘텐츠 영역" style="display: none; width: 100%; height: 100%; border: none;"></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>

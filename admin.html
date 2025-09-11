@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNS Corporation - 관리자 페이지</title>
+    <link rel="stylesheet" href="main.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 sidebar">
+                <div class="sidebar-content">
+                    <!-- Logo Section -->
+                    <div class="logo-section">
+                        <div class="logo-image">
+                            <img src="main.png" alt="CNS Corporation" class="logo-img">
+                        </div>
+                    </div>
+                    
+                    <!-- Navigation Menu -->
+                    <nav class="nav-menu">
+                        <ul class="nav-list">
+                            <li class="nav-item">
+                                <a href="#" class="nav-link active" id="dashboardMenu">
+                                    <i class="fas fa-chevron-right"></i>
+                                    대시보드
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" class="nav-link" id="userManagementMenu">
+                                    <i class="fas fa-chevron-right"></i>
+                                    사용자 관리
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" class="nav-link" id="approvalMenu">
+                                    <i class="fas fa-chevron-right"></i>
+                                    승인 관리
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" class="nav-link">
+                                    <i class="fas fa-chevron-right"></i>
+                                    시스템 설정(작업중)
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" class="nav-link">
+                                    <i class="fas fa-chevron-right"></i>
+                                    로그 관리(작업중)
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                    
+                    <!-- User Profile Section -->
+                    <div class="user-profile">
+                        <div class="user-avatar">
+                            <i class="fas fa-user-shield"></i>
+                        </div>
+                        <div class="user-info">
+                            <div class="user-dept" id="adminDept">관리자</div>
+                            <div class="user-name" id="adminName">관리자 이름</div>
+                        </div>
+                        <button id="logoutBtn" class="btn btn-outline-danger btn-sm sidebar-logout">로그아웃</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content Area -->
+            <div class="col-md-9 col-lg-10 main-content">
+                <!-- Mobile Menu Toggle Button -->
+                <button id="mobileMenuToggle" class="mobile-menu-toggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+                
+                <!-- Mobile Overlay -->
+                <div id="mobileOverlay" class="mobile-overlay"></div>
+                
+                <div class="content-body">
+                    <!-- Main content will be displayed here -->
+                    <div class="welcome-message" id="welcomeMessage">
+                        <h2>관리자 페이지</h2>
+                        <p>관리자 권한으로 로그인되었습니다.</p>
+                        <div class="admin-stats">
+                            <div class="stat-card">
+                                <i class="fas fa-users"></i>
+                                <h3 id="totalUsers">0</h3>
+                                <p>전체 사용자</p>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fas fa-clock"></i>
+                                <h3 id="pendingUsers">0</h3>
+                                <p>승인 대기</p>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fas fa-check-circle"></i>
+                                <h3 id="approvedUsers">0</h3>
+                                <p>승인 완료</p>
+                            </div>
+                        </div>
+                    </div>
+                    <iframe id="contentFrame" src="" style="display: none; width: 100%; height: 100%; border: none;"></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="admin.js"></script>
+</body>
+</html>

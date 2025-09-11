@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase 연결 테스트</title>
+</head>
+<body>
+    <h1>Firebase 연결 테스트</h1>
+    <button id="testBtn">Firebase 연결 테스트</button>
+    <div id="result"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+        import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+
+        // Firebase 설정
+        const firebaseConfig = {
+            apiKey: "AIzaSyBIaa_uz9PaofNXZjHpgkm-wjT4qhaN-vM",
+            authDomain: "csy-todo-test.firebaseapp.com",
+            databaseURL: "https://csy-todo-test-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "csy-todo-test",
+            storageBucket: "csy-todo-test.firebasestorage.app",
+            messagingSenderId: "841236508097",
+            appId: "1:841236508097:web:18fadfa64353a25a61d340"
+        };
+
+        // Firebase 초기화
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                console.log('Firebase 연결 테스트 시작...');
+                
+                // 테스트 데이터 저장
+                const testRef = ref(database, 'test');
+                await set(testRef, {
+                    message: 'Firebase 연결 성공!',
+                    timestamp: new Date().toISOString()
+                });
+                
+                console.log('테스트 데이터 저장 완료');
+                
+                // 테스트 데이터 읽기
+                const snapshot = await get(testRef);
+                const data = snapshot.val();
+                
+                console.log('테스트 데이터 읽기 완료:', data);
+                
+                resultDiv.innerHTML = `
+                    <h2 style="color: green;">✅ Firebase 연결 성공!</h2>
+                    <p>저장된 데이터: ${JSON.stringify(data, null, 2)}</p>
+                `;
+                
+            } catch (error) {
+                console.error('Firebase 연결 오류:', error);
+                resultDiv.innerHTML = `
+                    <h2 style="color: red;">❌ Firebase 연결 실패</h2>
+                    <p>오류: ${error.message}</p>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>

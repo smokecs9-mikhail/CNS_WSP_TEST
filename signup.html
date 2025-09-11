@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNS Corporation - 회원가입</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="background-image">
+        <img src="backpage.jpg" alt="Background" class="bg-img">
+    </div>
+    
+    <div class="login-container">
+        <div class="login-form">
+            <div class="logo">
+                <img src="logo.png" alt="CNS Corporation" class="logo-img">
+            </div>
+            
+            <h1 class="title">회원가입</h1>
+            <div class="title-line"></div>
+            
+            <form id="signupForm" class="form">
+                <div class="input-group">
+                    <input type="text" id="userName" placeholder="성명" required>
+                </div>
+                
+                <div class="input-group">
+                    <input type="text" id="signupUserId" placeholder="아이디" required>
+                </div>
+                
+                <div class="input-group">
+                    <input type="password" id="signupPassword" placeholder="비밀번호" required>
+                </div>
+                
+                <div class="input-group">
+                    <input type="password" id="confirmPassword" placeholder="비밀번호 확인" required>
+                </div>
+                
+                <div class="checkbox-group">
+                    <input type="checkbox" id="agreeTerms" required>
+                    <label for="agreeTerms">이용약관 및 개인정보처리방침에 동의합니다</label>
+                </div>
+                
+                <div class="radio-group">
+                    <label class="radio-label">권한 선택:</label>
+                    <div class="radio-options">
+                        <label class="radio-option">
+                            <input type="radio" name="userRole" value="user" checked>
+                            <span class="radio-text">사용자</span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="userRole" value="admin">
+                            <span class="radio-text">관리자</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <button type="submit" class="login-btn">승인요청</button>
+                
+                <div class="signup-section">
+                    <button type="button" id="backToLoginBtn" class="signup-btn">로그인으로 돌아가기</button>
+                </div>
+                
+                <div id="errorMessage" class="error-message"></div>
+            </form>
+            
+            <div class="bottom-line"></div>
+        </div>
+    </div>
+
+    <script type="module" src="signup.js"></script>
+</body>
+</html>
