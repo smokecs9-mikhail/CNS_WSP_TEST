@@ -41,6 +41,7 @@
                         <th rowspan="3">NO</th>
                         <th rowspan="3">건물명</th>
                         <th rowspan="3">주소</th>
+                        <th rowspan="3">규모</th>
                         <th rowspan="3">준공일<br>(예정)</th>
                         <th rowspan="3">연면적<br>(평)</th>
                         <th colspan="12">추진상황</th>
@@ -71,13 +72,27 @@
                 <tbody id="tableBody">
                     <!-- 데이터 행들이 여기에 동적으로 추가됩니다 -->
                 </tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td colspan="5">합계</td>
+                        <td id="totalArea">0</td>
+                        <td id="totalStage1" colspan="3"></td>
+                        <td id="totalStage2" colspan="3"></td>
+                        <td id="totalStage3" colspan="3"></td>
+                        <td id="totalStage4" colspan="3"></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
         
         <div class="controls">
             <button id="addRow" class="btn">행 추가</button>
+            <button id="uploadData" class="btn">데이터 업로드(EXCEL)</button>
             <button id="saveData" class="btn">데이터 저장(EXCEL)</button>
             <button id="loadData" class="btn">DB동기화</button>
+            <button id="deleteAll" class="btn btn-danger">DB모두삭제</button>
         </div>
     </div>
     

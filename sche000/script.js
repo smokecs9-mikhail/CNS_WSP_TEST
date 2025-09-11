@@ -46,6 +46,13 @@ class ScheduleManager {
         this.addRowBtn.addEventListener('click', () => this.addRow());
         this.saveDataBtn.addEventListener('click', () => this.saveData());
         this.loadDataBtn.addEventListener('click', () => this.loadData());
+        // 한글 주석: DB 모두 삭제 버튼 이벤트
+        const deleteBtn = document.getElementById('deleteAll');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => this.deleteAllData());
+        }
+        // 합계 초기 계산
+        this.updateTotals();
         
         // 경고 초기 상태 업데이트
         this.updateFirebaseWarning();
@@ -75,6 +82,8 @@ class ScheduleManager {
         
         // Firebase에 새 행 저장
         await this.saveRowToFirebase(row);
+        // 합계 갱신
+        this.updateTotals();
     }
 
     addRowWithoutFirebase() {
@@ -82,12 +91,16 @@ class ScheduleManager {
         const row = document.createElement('tr');
         row.innerHTML = this.createRowHTML(this.rowCount);
         this.tableBody.appendChild(row);
+        // 한글 주석: 고정 행 상태 갱신(1~3행 sticky)
+        this.applyStickyRows();
         
         console.log(`행 ${this.rowCount} 추가됨:`, row);
         console.log('추가된 textarea 개수:', row.querySelectorAll('textarea').length);
         
         // 이벤트 리스너 추가
         this.attachRowEventListeners(row);
+        // 합계 갱신
+        this.updateTotals();
     }
     
     createRowHTML(rowNumber) {
@@ -95,6 +108,7 @@ class ScheduleManager {
             <td>${rowNumber}</td>
             <td><textarea data-field="buildingName"></textarea></td>
             <td><textarea data-field="address"></textarea></td>
+            <td><textarea data-field="scale"></textarea></td>
             <td><textarea data-field="completionDate"></textarea></td>
             <td><textarea data-field="area"></textarea></td>
             <td><textarea class="stage-input" data-field="stage1-1"></textarea></td>
@@ -127,8 +141,31 @@ class ScheduleManager {
                 } else {
                 this.saveToLocalStorage();
                 }
+                // 합계 갱신
+                this.updateTotals();
             });
         });
+        
+        // 한글 주석: 연면적(평) 입력란 전용 정규화/포맷 적용
+        const areaInput = row.querySelector('textarea[data-field="area"]');
+        if (areaInput) {
+            // 입력 시 숫자/쉼표/점 외 문자는 제거
+            areaInput.addEventListener('input', () => {
+                const raw = (areaInput.value || '').toString();
+                const cleaned = raw.replace(/[^0-9.,]/g, '');
+                if (cleaned !== raw) areaInput.value = cleaned;
+            });
+            // 포커스 아웃 시 포맷팅(반올림 후 콤마)
+            areaInput.addEventListener('blur', () => {
+                areaInput.value = ScheduleManager.formatArea(areaInput.value);
+                this.updateTotals();
+                if (this.isFirebaseConnected) {
+                    this.updateRowInFirebase(row);
+                } else {
+                    this.saveToLocalStorage();
+                }
+            });
+        }
         
         // 셀 우클릭 이벤트
         const cells = row.querySelectorAll('td');
@@ -167,7 +204,12 @@ class ScheduleManager {
     
     async loadData() {
         try {
-            // 기존 데이터 초기화
+            // 기존 데이터 초기화 (thead에 남은 고정행도 복원/삭제)
+            const table = document.getElementById('scheduleTable');
+            const thead = table ? table.querySelector('thead') : null;
+            if (thead) {
+                Array.from(thead.querySelectorAll('tr.pinned-row')).forEach(tr => tr.remove());
+            }
             this.tableBody.innerHTML = '';
             this.rowCount = 0;
             this.rows.clear();
@@ -181,7 +223,12 @@ class ScheduleManager {
     }
     
     loadDataIntoTable(data) {
-        // 기존 데이터 초기화
+        // 기존 데이터 초기화 (thead에 남은 고정행도 복원/삭제)
+        const table = document.getElementById('scheduleTable');
+        const thead = table ? table.querySelector('thead') : null;
+        if (thead) {
+            Array.from(thead.querySelectorAll('tr.pinned-row')).forEach(tr => tr.remove());
+        }
         this.tableBody.innerHTML = '';
         this.rowCount = 0;
         
@@ -190,6 +237,8 @@ class ScheduleManager {
             this.addRow();
             this.populateRow(this.tableBody.children[index], rowData);
         });
+        // 합계 갱신
+        this.updateTotals();
     }
     
     populateRow(row, data) {
@@ -201,6 +250,13 @@ class ScheduleManager {
                 input.value = data[field];
             }
         });
+        // 한글 주석: 연면적 필드 표시 포맷 적용
+        const areaInput = row.querySelector('textarea[data-field="area"]');
+        if (areaInput) {
+            areaInput.value = ScheduleManager.formatArea(areaInput.value);
+        }
+        // 합계 갱신
+        this.updateTotals();
     }
     
     collectData() {
@@ -212,6 +268,7 @@ class ScheduleManager {
                 rowNumber: index + 1,
                 buildingName: '',
                 address: '',
+                scale: '',
                 completionDate: '',
                 area: '',
                 manager: '',
@@ -370,21 +427,29 @@ class ScheduleManager {
     }
 
     // Firebase Realtime Database 관련 메서드들
+    // 한글 주석: 행별 안정 키 생성 (NO 우선, 없으면 건물명+주소)
+    makeStableKey(rowData) {
+        const no = Number(rowData.rowNumber);
+        if (Number.isFinite(no) && no > 0) return `NO_${no}`;
+        const name = (rowData.buildingName || '').trim().replace(/[.#$\[\]/]/g, '_');
+        const addr = (rowData.address || '').trim().replace(/[.#$\[\]/]/g, '_');
+        return `NK_${name}__${addr}`;
+    }
+
     async saveRowToFirebase(row) {
         try {
             const rowData = this.collectRowData(row);
-            const newRowRef = push(ref(database, 'scheduleData'));
-            await set(newRowRef, {
+            const key = this.makeStableKey(rowData);
+            const rowRef = ref(database, `scheduleData/${key}`);
+            await set(rowRef, {
                 ...rowData,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             });
-            
-            // 행에 Firebase key 저장
-            row.dataset.firebaseId = newRowRef.key;
-            this.rows.set(row, newRowRef.key);
-            
-            console.log('행이 Firebase에 저장되었습니다:', newRowRef.key);
+            // 행에 Firebase key 저장(안정 키 사용)
+            row.dataset.firebaseId = key;
+            this.rows.set(row, key);
+            console.log('행이 Firebase에 저장되었습니다(안정키):', key);
         } catch (error) {
             console.error('Firebase 저장 실패:', error);
             throw error;
@@ -393,21 +458,17 @@ class ScheduleManager {
 
     async updateRowInFirebase(row) {
         try {
-            const firebaseId = row.dataset.firebaseId;
-            if (!firebaseId) {
-                // Firebase ID가 없으면 새로 저장
-                await this.saveRowToFirebase(row);
-                return;
-            }
-
             const rowData = this.collectRowData(row);
-            const rowRef = ref(database, `scheduleData/${firebaseId}`);
+            // 한글 주석: 안정 키로 upsert
+            const key = row.dataset.firebaseId || this.makeStableKey(rowData);
+            const rowRef = ref(database, `scheduleData/${key}`);
             await set(rowRef, {
                 ...rowData,
                 updatedAt: new Date().toISOString()
             });
-            
-            console.log('행이 Firebase에서 업데이트되었습니다:', firebaseId);
+            // 한글 주석: 키 저장(최초 저장 시)
+            row.dataset.firebaseId = key;
+            console.log('행이 Firebase에서 업데이트되었습니다:', key);
         } catch (error) {
             console.error('Firebase 업데이트 실패:', error);
             throw error;
@@ -440,30 +501,43 @@ class ScheduleManager {
                 });
             });
             
-            const data = snapshot.val();
+            let data = snapshot.val();
             
             if (!data) {
-                console.log('Firebase에 데이터가 없습니다. 초기 행을 추가합니다.');
-                // 데이터가 없으면 초기 9개 행 추가 (Firebase 저장 없이)
-                for (let i = 0; i < 9; i++) {
-                    this.addRowWithoutFirebase();
-                }
-                console.log('초기 9개 행이 추가되었습니다.');
+                console.log('Firebase에 데이터가 없습니다. (자동 행 생성 생략)');
+                // 한글 주석: 예전에는 빈 화면에 9행을 자동 추가했지만, 예기치 않은 행 증가를 막기 위해 생략
                 this.isFirebaseConnected = true;
                 this.updateFirebaseWarning();
                 return;
             }
 
+            // 한글 주석: 로드 시 중복/불량 키 자동 정리 (안정키 기준 병합)
+            try {
+                const normalized = await this.dedupeFirebaseData(data);
+                if (normalized) {
+                    data = normalized;
+                }
+            } catch (e) {
+                console.warn('중복 정리 중 경고:', e);
+            }
+
             console.log(`Firebase에서 ${Object.keys(data).length}개의 데이터를 찾았습니다.`);
             
-            // 보조 키(__로 시작) 제외하고 정렬하여 로드
+            // 한글 주석: 빈 행 판별 유틸
+            const isEmptyRow = (obj) => {
+                const keys = ['buildingName','address','scale','completionDate','area','manager','remarks','stage1-1','stage1-2','stage1-3','stage2-1','stage2-2','stage2-3','stage3-1','stage3-2','stage3-3','stage4-1','stage4-2','stage4-3'];
+                return keys.every(k => (obj?.[k] ?? '').toString().trim() === '');
+            };
+
+            // 보조 키(__로 시작) 제외하고 정렬하여 로드, 그리고 완전 빈 행 제거
             const sortedData = Object.entries(data)
                 .filter(([key]) => !key.startsWith('__'))
                 .sort((a, b) => {
                     const aData = a[1];
                     const bData = b[1];
                     return (aData.rowNumber || 0) - (bData.rowNumber || 0);
-                });
+                })
+                .filter(([, value]) => !isEmptyRow(value));
 
             sortedData.forEach(([key, value]) => {
                 this.addRowFromFirebase(value, key);
@@ -480,6 +554,111 @@ class ScheduleManager {
             // Firebase 연결 실패 시 오프라인 모드로 전환
             this.enableOfflineMode();
             this.updateFirebaseWarning();
+        }
+    }
+
+    // 한글 주석: Firebase 중복/불량 키 정리 (안정 키 기준 upsert)
+    async dedupeFirebaseData(dataObj) {
+        try {
+            if (!dataObj) return null;
+            const entries = Object.entries(dataObj).filter(([k]) => !k.startsWith('__'));
+            if (entries.length === 0) return null;
+
+            const bestByStableKey = new Map();
+            const allKeys = new Set();
+            for (const [key, value] of entries) {
+                allKeys.add(key);
+                const stable = this.makeStableKey(value || {});
+                const current = bestByStableKey.get(stable);
+                const tsOf = (v) => {
+                    const u = Date.parse(v?.updatedAt || '') || 0;
+                    const c = Date.parse(v?.createdAt || '') || 0;
+                    return Math.max(u, c);
+                };
+                if (!current || tsOf(value) >= tsOf(current)) {
+                    bestByStableKey.set(stable, { key, value });
+                }
+            }
+
+            // 쓰기/삭제 계획 실행
+            const keepKeys = new Set();
+            for (const [stable, { key, value }] of bestByStableKey.entries()) {
+                const rowRef = ref(database, `scheduleData/${stable}`);
+                await set(rowRef, { ...value, updatedAt: new Date().toISOString() });
+                keepKeys.add(stable);
+            }
+            // 불필요 키 삭제 (안정키가 아닌 기존 키들)
+            for (const key of allKeys) {
+                if (!keepKeys.has(key)) {
+                    await remove(ref(database, `scheduleData/${key}`));
+                }
+            }
+
+            // 정리된 객체 반환
+            const normalized = {};
+            for (const [stable, { value }] of bestByStableKey.entries()) {
+                normalized[stable] = value;
+            }
+            return normalized;
+        } catch (e) {
+            console.error('dedupeFirebaseData 오류:', e);
+            return null;
+        }
+    }
+
+    // 한글 주석: 완전 강제 정리(빈 행 제거 + 안정키 병합 + 잔여키 삭제) 후 재로딩
+    async forceCleanupAndReload() {
+        try {
+            const scheduleDataRef = ref(database, 'scheduleData');
+            const snapshot = await new Promise((resolve, reject) => {
+                const unsub = onValue(scheduleDataRef, (snap) => { unsub(); resolve(snap); }, (err) => { unsub(); reject(err); });
+            });
+            const data = snapshot.val() || {};
+            const entries = Object.entries(data).filter(([k]) => !k.startsWith('__'));
+
+            const isEmptyRow = (obj) => {
+                const keys = ['buildingName','address','scale','completionDate','area','manager','remarks','stage1-1','stage1-2','stage1-3','stage2-1','stage2-2','stage2-3','stage3-1','stage3-2','stage3-3','stage4-1','stage4-2','stage4-3'];
+                return keys.every(k => (obj?.[k] ?? '').toString().trim() === '');
+            };
+
+            // 1) 빈 행 삭제
+            for (const [key, value] of entries) {
+                if (isEmptyRow(value)) {
+                    await remove(ref(database, `scheduleData/${key}`));
+                }
+            }
+
+            // 2) 안정키 병합/정리
+            const afterSnap = await new Promise((resolve, reject) => {
+                const unsub = onValue(scheduleDataRef, (snap) => { unsub(); resolve(snap); }, (err) => { unsub(); reject(err); });
+            });
+            const afterData = afterSnap.val() || {};
+            await this.dedupeFirebaseData(afterData);
+
+            // 3) 화면 재로딩
+            await this.loadDataFromFirebase();
+            alert('DB 강제 정리 완료: 빈 행 삭제 및 중복 병합이 끝났습니다.');
+        } catch (e) {
+            console.error('forceCleanupAndReload 오류:', e);
+            alert('DB 강제 정리 중 오류가 발생했습니다: ' + (e?.message || e));
+        }
+    }
+
+    // 한글 주석: Firebase scheduleData 전체 삭제(확인창 포함)
+    async deleteAllData() {
+        try {
+            if (!confirm('정말로 DB의 모든 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+            await remove(ref(database, 'scheduleData'));
+            // 화면/로컬 초기화
+            localStorage.removeItem('scheduleData');
+            this.tableBody.innerHTML = '';
+            this.rowCount = 0;
+            this.rows.clear();
+            this.updateTotals();
+            alert('DB의 모든 데이터를 삭제했습니다.');
+        } catch (e) {
+            console.error('deleteAllData 오류:', e);
+            alert('DB 모두 삭제 중 오류가 발생했습니다: ' + (e?.message || e));
         }
     }
 
@@ -526,13 +705,7 @@ class ScheduleManager {
         // 로컬 스토리지에서 데이터 로드 시도
         const hasLocalData = this.loadFromLocalStorage();
         
-        if (!hasLocalData) {
-            // 로컬 데이터가 없으면 초기 9개 행 추가
-            for (let i = 0; i < 9; i++) {
-                this.addRowWithoutFirebase();
-            }
-            console.log('오프라인 모드: 초기 9개 행이 추가되었습니다.');
-        }
+        // 한글 주석: 로컬 데이터가 없을 때도 더 이상 기본 행을 자동 추가하지 않음
         
         // 경고는 updateFirebaseWarning에서 제어
     }
@@ -543,6 +716,8 @@ class ScheduleManager {
         row.innerHTML = this.createRowHTML(this.rowCount);
         row.dataset.firebaseId = firebaseId;
         this.tableBody.appendChild(row);
+        // 한글 주석: 고정 행 상태 갱신(1~3행 sticky)
+        this.applyStickyRows();
         
         // 데이터 채우기
         this.populateRow(row, data);
@@ -552,6 +727,8 @@ class ScheduleManager {
         
         // rows Map에 추가
         this.rows.set(row, firebaseId);
+        // 합계 갱신
+        this.updateTotals();
     }
 
     collectRowData(row) {
@@ -559,6 +736,7 @@ class ScheduleManager {
             rowNumber: parseInt(row.querySelector('td:first-child').textContent),
             buildingName: '',
             address: '',
+            scale: '',
             completionDate: '',
             area: '',
             manager: '',
@@ -622,6 +800,8 @@ class ScheduleManager {
             this.addRowWithoutFirebase();
             this.populateRow(this.tableBody.children[index], rowData);
         });
+        // 한글 주석: 고정 행 상태 갱신(1~3행 sticky)
+        this.applyStickyRows();
     }
     
     populateRow(row, data) {
@@ -635,6 +815,80 @@ class ScheduleManager {
         });
     }
 }
+
+// 합계 계산 유틸 추가 (연면적 합계)
+ScheduleManager.prototype.updateTotals = function() {
+    try {
+        const tbody = document.getElementById('tableBody');
+        const rows = tbody ? Array.from(tbody.querySelectorAll('tr')) : [];
+        let sum = 0; // 한글 주석: 연면적 합계
+        let stage1Count = 0; // 한글 주석: 최종 작성 단계가 1단계인 행 수
+        let stage2Count = 0; // 한글 주석: 최종 작성 단계가 2단계인 행 수
+        let stage3Count = 0; // 한글 주석: 최종 작성 단계가 3단계인 행 수
+        let stage4Count = 0; // 한글 주석: 최종 작성 단계가 4단계인 행 수
+        rows.forEach(row => {
+            // 연면적(평) 컬럼은 현재 6번째 컬럼
+            const areaInput = row.querySelector('td:nth-child(6) textarea');
+            if (areaInput) {
+                const raw = (areaInput.value || '').toString().replace(/,/g, '').trim();
+                const num = parseFloat(raw);
+                if (!isNaN(num)) sum += Math.round(num);
+            }
+
+            // 한글 주석: 단계 판정 규칙
+            // 7~18열(1-1..4-3) 중 마지막으로 값이 들어있는 셀의 단계가 그 행의 단계
+            const stageCols = [7,8,9,10,11,12,13,14,15,16,17,18];
+            let lastFilledIndex = -1;
+            for (let i = stageCols.length - 1; i >= 0; i--) {
+                const col = stageCols[i];
+                const el = row.querySelector(`td:nth-child(${col}) textarea`);
+                const val = (el?.value || '').toString().trim();
+                if (val !== '') { lastFilledIndex = i; break; }
+            }
+            if (lastFilledIndex >= 0) {
+                const stageNumber = Math.floor(lastFilledIndex / 3) + 1; // 0..2=>1, 3..5=>2, 6..8=>3, 9..11=>4
+                if (stageNumber === 1) stage1Count++;
+                if (stageNumber === 2) stage2Count++;
+                if (stageNumber === 3) stage3Count++;
+                if (stageNumber === 4) stage4Count++;
+            }
+        });
+        const totalArea = document.getElementById('totalArea');
+        if (totalArea) {
+            totalArea.textContent = Number.isFinite(sum) ? sum.toLocaleString() : '0';
+        }
+        const total = stage1Count + stage2Count + stage3Count + stage4Count;
+        const pct = (n) => {
+            if (!total) return 0;
+            return Math.round((n / total) * 100);
+        };
+        const totalStage1 = document.getElementById('totalStage1');
+        if (totalStage1) totalStage1.textContent = `1단계 : ${stage1Count}건 (${pct(stage1Count)}%)`;
+        const totalStage2 = document.getElementById('totalStage2');
+        if (totalStage2) totalStage2.textContent = `2단계 : ${stage2Count}건 (${pct(stage2Count)}%)`;
+        const totalStage3 = document.getElementById('totalStage3');
+        if (totalStage3) totalStage3.textContent = `3단계 : ${stage3Count}건 (${pct(stage3Count)}%)`;
+        const totalStage4 = document.getElementById('totalStage4');
+        if (totalStage4) totalStage4.textContent = `4단계 : ${stage4Count}건 (${pct(stage4Count)}%)`;
+    } catch (e) {
+        console.error('합계 계산 오류:', e);
+    }
+};
+
+// 한글 주석: 연면적 포맷터(숫자면 반올림 후 3자리 콤마, 숫자 아니면 원문 유지)
+ScheduleManager.formatArea = function(value) {
+    try {
+        if (value == null) return '';
+        const raw = value.toString().replace(/,/g, '').trim();
+        if (raw === '') return '';
+        const num = Number(raw);
+        if (!Number.isFinite(num)) return value; // 숫자가 아니면 그대로 둠
+        const rounded = Math.round(num);
+        return rounded.toLocaleString();
+    } catch (_) {
+        return value;
+    }
+};
 
 // 페이지 로드 시 초기화
 document.addEventListener('DOMContentLoaded', () => {
@@ -665,7 +919,196 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+
+    // ================== EXCEL 업로드: 버튼(id=uploadData) 핸들러 ==================
+    const uploadBtn = document.getElementById('uploadData');
+    if (uploadBtn) {
+        // 숨김 파일 입력 생성 (xlsx 전용)
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.xlsx';
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+
+        uploadBtn.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', async (ev) => {
+            try {
+                const file = ev.target.files && ev.target.files[0];
+                if (!file) return;
+
+                const data = await file.arrayBuffer();
+                const wb = XLSX.read(data, { type: 'array' });
+                const sheetName = wb.SheetNames[0];
+                const ws = wb.Sheets[sheetName];
+                const rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
+
+                // 1) A열에서 숫자 1이 되는 곳부터 시작 행 찾기
+                let startIdx = -1;
+                for (let i = 0; i < rows.length; i++) {
+                    const a = rows[i]?.[0];
+                    if (Number(a) === 1) { startIdx = i; break; }
+                }
+                if (startIdx === -1) {
+                    alert('엑셀에서 시작 행(A열=1)을 찾을 수 없습니다.');
+                    return;
+                }
+
+                // 2) A열 숫자가 끝나고 '합계'를 만나면 종료 (숫자 구간만 수집)
+                const picked = [];
+                for (let i = startIdx; i < rows.length; i++) {
+                    const a = rows[i]?.[0];
+                    if (typeof a === 'string' && a.trim() === '합계') break;
+                    const aNum = Number(a);
+                    if (!Number.isFinite(aNum)) break; // 숫자 구간 종료
+                    picked.push(rows[i]);
+                }
+
+                // 3) 행 부족 시 자동 추가는 loadDataIntoTable 내부에서 처리되므로,
+                //    여기서는 테이블에 넣을 데이터 객체 배열을 구성한다.
+                // 컬럼 매핑: A:NO, B:건물명, C:주소, D:규모, E:준공일, F:연면적,
+                // G..I:1-1..1-3, J..L:2-1..2-3, M..O:3-1..3-3, P..R:4-1..4-3, S:담당자, T:비고
+                const mapRow = (r) => ({
+                    rowNumber: Number(r?.[0]) || '',
+                    buildingName: r?.[1] ?? '',
+                    address: r?.[2] ?? '',
+                    scale: r?.[3] ?? '',
+                    completionDate: r?.[4] ?? '',
+                    area: r?.[5] ?? '',
+                    'stage1-1': r?.[6] ?? '',
+                    'stage1-2': r?.[7] ?? '',
+                    'stage1-3': r?.[8] ?? '',
+                    'stage2-1': r?.[9] ?? '',
+                    'stage2-2': r?.[10] ?? '',
+                    'stage2-3': r?.[11] ?? '',
+                    'stage3-1': r?.[12] ?? '',
+                    'stage3-2': r?.[13] ?? '',
+                    'stage3-3': r?.[14] ?? '',
+                    'stage4-1': r?.[15] ?? '',
+                    'stage4-2': r?.[16] ?? '',
+                    'stage4-3': r?.[17] ?? '',
+                    manager: r?.[18] ?? '',
+                    remarks: r?.[19] ?? ''
+                });
+
+                const isEmptyRow = (obj) => {
+                    const keys = ['buildingName','address','scale','completionDate','area','stage1-1','stage1-2','stage1-3','stage2-1','stage2-2','stage2-3','stage3-1','stage3-2','stage3-3','stage4-1','stage4-2','stage4-3','manager','remarks'];
+                    return keys.every(k => (obj[k] ?? '').toString().trim() === '');
+                };
+
+                const dataObjs = picked.map(mapRow)
+                    .filter(row => !isEmptyRow(row)); // 4) 데이터가 모두 없는 행은 제거
+
+                // rowNumber는 테이블 표시용이라 비어있으면 자동 번호 부여
+                dataObjs.forEach((r, idx) => { if (!r.rowNumber) r.rowNumber = idx + 1; });
+
+                // =============== 중복 검사 및 덮어쓰기 확인 ===============
+                // 기준 키: 우선 NO(숫자)가 있으면 NO로 식별, 없으면 건물명+주소 조합으로 식별
+                // 한 개라도 겹치면 확인 팝업(덮어쓰기 여부)을 표시
+
+                // 현재 테이블의 키 집합 수집
+                const buildKeyFromObj = (obj) => {
+                    const no = Number(obj.rowNumber);
+                    if (Number.isFinite(no) && no > 0) return `NO:${no}`;
+                    const name = (obj.buildingName || '').trim();
+                    const addr = (obj.address || '').trim();
+                    return `NMADDR:${name}||${addr}`;
+                };
+
+                const buildKeyFromRow = (tr) => {
+                    // 현재 화면의 행에서 값 읽기
+                    const getVal = (selector) => {
+                        const el = tr.querySelector(selector);
+                        return el ? el.value || '' : '';
+                    };
+                    const noText = (tr.querySelector('td:first-child')?.textContent || '').trim();
+                    const no = Number(noText);
+                    if (Number.isFinite(no) && no > 0) return `NO:${no}`;
+                    const name = getVal('textarea[data-field="buildingName"]').trim();
+                    const addr = getVal('textarea[data-field="address"]').trim();
+                    return `NMADDR:${name}||${addr}`;
+                };
+
+                const currentRows = Array.from(document.getElementById('tableBody')?.querySelectorAll('tr') || []);
+                const currentKeySet = new Set(currentRows.map(buildKeyFromRow));
+
+                // 업로드 데이터의 키 집합 생성
+                const uploadKeys = dataObjs.map(buildKeyFromObj);
+                const hasOverlap = uploadKeys.some(k => currentKeySet.has(k));
+
+                if (hasOverlap) {
+                    const ok = window.confirm('기존의 자료를 덮어쓰기 하시겠습니까?');
+                    if (!ok) {
+                        // 사용자가 취소하면 업로드 작업 중단
+                        fileInput.value = '';
+                        return;
+                    }
+                }
+
+                // 테이블 채우기 (Firebase 저장 없이)
+                scheduleManager.loadDataIntoTable(dataObjs);
+
+                // 한글 주석: 업로드 후 연면적(평) 모든 셀 포맷팅 적용 및 합계 갱신
+                try {
+                    const areaInputs = document.querySelectorAll('tbody#tableBody td:nth-child(6) textarea[data-field="area"]');
+                    areaInputs.forEach((el) => {
+                        el.value = ScheduleManager.formatArea(el.value);
+                    });
+                } catch (_) {}
+                scheduleManager.updateTotals();
+
+                // ================== 업로드 후 자동 저장 처리 ==================
+                // 온라인(Firebase 연결)인 경우: 모든 행을 Firebase에 저장
+                // 오프라인인 경우: 로컬스토리지에 저장
+                try {
+                    const tbody = document.getElementById('tableBody');
+                    const trs = Array.from(tbody ? tbody.querySelectorAll('tr') : []);
+                    if (scheduleManager.isFirebaseConnected) {
+                        // 한글 주석: 업로드된 모든 행을 Firebase에 반영
+                        for (const tr of trs) {
+                            await scheduleManager.updateRowInFirebase(tr);
+                        }
+                    } else {
+                        // 한글 주석: 오프라인 모드에서는 로컬 저장
+                        scheduleManager.saveToLocalStorage();
+                    }
+                } catch (persistErr) {
+                    console.error('업로드 후 저장 과정에서 오류:', persistErr);
+                }
+
+                // 파일 입력 초기화
+                fileInput.value = '';
+                alert(`엑셀 업로드 완료: ${dataObjs.length}개 행 반영\n데이터가 자동 저장되었습니다.`);
+            } catch (err) {
+                console.error('엑셀 업로드 오류:', err);
+                alert('엑셀 업로드 중 오류가 발생했습니다.');
+            }
+        });
+    }
 });
+
+// 한글 주석: 행 고정 취소 및 원상 복구
+ScheduleManager.prototype.applyStickyRows = function() {
+    try {
+        const table = document.getElementById('scheduleTable');
+        const thead = table ? table.querySelector('thead') : null;
+        const tbody = document.getElementById('tableBody');
+        if (!thead || !tbody) return;
+
+        // thead로 올라간 고정행을 모두 tbody 앞으로 되돌림
+        const pinned = Array.from(thead.querySelectorAll('tr.pinned-row'));
+        pinned.forEach(tr => {
+            tr.classList.remove('pinned-row');
+            tbody.insertBefore(tr, tbody.firstChild);
+        });
+        // sticky-row 클래스들도 제거
+        Array.from(tbody.querySelectorAll('tr.sticky-row')).forEach(tr => {
+            tr.classList.remove('sticky-row', 'row-1', 'row-2', 'row-3');
+        });
+    } catch (e) {
+        console.error('sticky 행 적용 오류:', e);
+    }
+};
 
 // 헤더 클릭 토글 기능
 document.addEventListener('DOMContentLoaded', () => {

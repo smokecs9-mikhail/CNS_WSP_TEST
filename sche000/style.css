@@ -7,7 +7,8 @@
 body {
     font-family: 'Malgun Gothic', Arial, sans-serif;
     background-color: white;
-    padding: 20px;
+    padding: 10px 20px 0 20px; /* 한글 주석: 상단 여백 축소 */
+    overflow: hidden; /* 한글 주석: 바깥(윈도우) 스크롤 제거 */
 }
 
 .container {
@@ -16,11 +17,14 @@ body {
     border-radius: 0;
     box-shadow: none;
     overflow: hidden;
+    height: calc(100vh - 10px); /* 한글 주석: 외부 스크롤바 방지 */
+    display: flex;
+    flex-direction: column;
 }
 
 .header {
     background-color: white;
-    padding: 20px;
+    padding: 8px 0; /* 한글 주석: 헤더 높이 최소화 */
     text-align: center;
     border-bottom: 1px solid #ddd;
 }
@@ -29,7 +33,7 @@ body {
     text-align: left;
     font-size: 14px;
     color: #666;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
 }
 
 h1 {
@@ -54,7 +58,10 @@ h2 {
 
 .table-container {
     overflow-x: auto;
-    padding: 20px;
+    overflow-y: auto; /* 한글 주석: 세로 스크롤 컨테이너로 지정 */
+    padding: 0 0 8px 0; /* 한글 주석: 상하좌우 여백 최소화 */
+    position: relative; /* 한글 주석: sticky 기준 컨테이너 */
+    flex: 1 1 auto; /* 한글 주석: 남는 높이를 모두 표가 차지 */
 }
 
 /* Firebase 경고 박스 */
@@ -106,6 +113,30 @@ table {
     table-layout: fixed;
 }
 
+/* ===== 헤더 고정(스크롤 시 상단 고정) ===== */
+#scheduleTable thead tr th {
+    position: sticky;
+    z-index: 20; /* 한글 주석: 본문보다 위 */
+    border: 1px solid #000 !important; /* 한글 주석: 칸 테두리 선 강화 */
+    background-clip: padding-box;
+}
+/* 헤더는 3행 구조(각 30px). 행별 top 오프셋 지정 */
+#scheduleTable thead tr:nth-child(1) th { top: 0; }
+#scheduleTable thead tr:nth-child(2) th { top: 30px; border-top: 1px solid #000 !important; }
+#scheduleTable thead tr:nth-child(3) th { top: 60px; border-top: 1px solid #000 !important; }
+
+/* ===== 고정 행(1~3행) 처리 ===== */
+.sticky-row td {
+    position: sticky;
+    z-index: 5; /* 한글 주석: 입력 필드보다 위로 오도록 충분히 크게 */
+    background-color: #fff; /* 한글 주석: 아래 행이 비쳐 보이지 않게 배경색 지정 */
+}
+
+/* 한글 주석: 헤더가 스크롤 아웃되면 바로 상단에 고정되도록 0, 60, 120 지정 */
+.sticky-row.row-1 td { top: 0; }
+.sticky-row.row-2 td { top: 60px; }
+.sticky-row.row-3 td { top: 120px; }
+
 th, td {
     border: 1px solid #000;
     padding: 0;
@@ -115,12 +146,26 @@ th, td {
     height: 60px;
 }
 
+/* 한글 주석: 위의 일반 규칙이 position을 relative로 덮어써 sticky가 무력화되므로
+   아래에서 sticky 행에 대해 다시 강제 지정한다 */
+.sticky-row td { position: sticky !important; z-index: 5; background-color: #fff; }
+.sticky-row.row-1 td { top: 0 !important; }
+.sticky-row.row-2 td { top: 60px !important; }
+.sticky-row.row-3 td { top: 120px !important; }
+
 .main-header th {
     background-color: #e9ecef;
     font-weight: bold;
     font-size: 13px;
     height: 30px;
     vertical-align: middle;
+}
+
+/* 한글 주석: thead 로 이동한 고정행(pinned-row) 스타일 - 본문 행과 동일한 높이/테두리 유지 */
+thead tr.pinned-row td, thead tr.pinned-row th {
+    height: 60px;
+    border: 1px solid #000;
+    background-color: #fff;
 }
 
 .stage-header th {
@@ -174,6 +219,12 @@ tbody tr:hover {
     background-color: #e9ecef !important;
 }
 
+/* 한글 주석: 합계행의 연면적(평) 합계 값을 오른쪽 정렬 */
+#totalArea {
+    text-align: right;
+    padding-right: 8px;
+}
+
 /* 입력 필드 스타일 */
 input[type="text"], input[type="date"], textarea {
     width: 100%;
@@ -195,6 +246,7 @@ input[type="text"], input[type="date"], textarea {
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden; /* 한글 주석: 셀 내부 스크롤바 숨김 */
 }
 
 input[type="text"]:focus, input[type="date"]:focus, textarea:focus {
@@ -215,21 +267,28 @@ textarea {
     left: 0;
     right: 0;
     bottom: 0;
-    padding-top: 20px;
-    line-height: 1.2;
+    padding-top: 6px; /* 한글 주석: 패딩을 줄여 불필요한 세로 스크롤 제거 */
+    line-height: 1.3;
+    overflow: hidden; /* 한글 주석: 기본 스크롤 제거 */
+    scrollbar-width: none; /* Firefox 스크롤 숨김 */
 }
 
-/* 기본 정보 컬럼 textarea 스타일 */
+/* WebKit 스크롤 숨김 */
+textarea::-webkit-scrollbar { display: none; }
+
+/* 기본 정보 컬럼 textarea 스타일 (열 구조 반영: NO, 건물명, 주소, 규모, 준공일, 연면적) */
 th:nth-child(2) textarea, td:nth-child(2) textarea, /* 건물명 */
 th:nth-child(3) textarea, td:nth-child(3) textarea, /* 주소 */
-th:nth-child(4) textarea, td:nth-child(4) textarea, /* 준공일 */
-th:nth-child(5) textarea, td:nth-child(5) textarea, /* 연면적 */
-th:nth-child(18) textarea, td:nth-child(18) textarea { /* 담당자 */
-    text-align: center;
+th:nth-child(4) textarea, td:nth-child(4) textarea, /* 규모 */
+th:nth-child(5) textarea, td:nth-child(5) textarea, /* 준공일 */
+th:nth-child(6) textarea, td:nth-child(6) textarea, /* 연면적 */
+th:nth-child(19) textarea, td:nth-child(19) textarea { /* 담당자 */
+    text-align: right; /* 한글 주석: 연면적 입력란은 오른쪽 정렬 */
     vertical-align: middle;
     min-height: 60px;
     height: 100%;
-    padding-top: 20px;
+    padding-top: 6px;
+    padding-right: 8px; /* 한글 주석: 오른쪽 여백 추가로 숫자 가독성 향상 */
     margin: 0;
     font-size: 12px;
     box-sizing: border-box;
@@ -241,43 +300,46 @@ th:nth-child(18) textarea, td:nth-child(18) textarea { /* 담당자 */
     line-height: 1.2;
 }
 
-/* 특정 컬럼 너비 조정 - 화면에 맞게 조절 */
+/* 특정 컬럼 너비 조정 - 화면에 맞게 조절 (열 구조 반영) */
 th:nth-child(1), td:nth-child(1) { width: 50px; } /* NO */
 th:nth-child(2), td:nth-child(2) { width: 500px; } /* 건물명 */
 th:nth-child(3), td:nth-child(3) { width: 600px; } /* 주소 */
-th:nth-child(4), td:nth-child(4) { width: 500px; } /* 준공일 */
-th:nth-child(5), td:nth-child(5) { width: 300px; } /* 연면적 */
-th:nth-child(18), td:nth-child(18) { width: 50px; } /* 담당자 */
-th:nth-child(19), td:nth-child(19) { width: 50px; } /* 비고 */
+th:nth-child(4), td:nth-child(4) { width: 200px; } /* 규모 */
+th:nth-child(5), td:nth-child(5) { width: 300px; } /* 준공일 */
+th:nth-child(6), td:nth-child(6) { width: 220px; } /* 연면적 */
+th:nth-child(19), td:nth-child(19) { width: 80px; } /* 담당자 */
+th:nth-child(20), td:nth-child(20) { width: 120px; } /* 비고 */
 
-/* 진행 상황 컬럼들 - 개별 정의 */
-th:nth-child(6), td:nth-child(6) { width: 300px; text-align: center; } /* 1-1 */
-th:nth-child(7), td:nth-child(7) { width: 300px; text-align: center; } /* 1-2 */
-th:nth-child(8), td:nth-child(8) { width: 300px; text-align: center; } /* 1-3 */
-th:nth-child(9), td:nth-child(9) { width: 300px; text-align: center; } /* 2-1 */
-th:nth-child(10), td:nth-child(10) { width: 300px; text-align: center; } /* 2-2 */
-th:nth-child(11), td:nth-child(11) { width: 300px; text-align: center; } /* 2-3 */
-th:nth-child(12), td:nth-child(12) { width: 300px; text-align: center; } /* 3-1 */
-th:nth-child(13), td:nth-child(13) { width: 300px; text-align: center; } /* 3-2 */
-th:nth-child(14), td:nth-child(14) { width: 300px; text-align: center; } /* 3-3 */
-th:nth-child(15), td:nth-child(15) { width: 300px; text-align: center; } /* 4-1 */
-th:nth-child(16), td:nth-child(16) { width: 300px; text-align: center; } /* 4-2 */
-th:nth-child(17), td:nth-child(17) { width: 300px; text-align: center; } /* 4-3 */
+/* 진행 상황 컬럼들 - 개별 정의 (열 추가로 인덱스 +1 이동) */
+th:nth-child(7), td:nth-child(7) { width: 260px; text-align: center; } /* 1-1 */
+th:nth-child(8), td:nth-child(8) { width: 260px; text-align: center; } /* 1-2 */
+th:nth-child(9), td:nth-child(9) { width: 260px; text-align: center; } /* 1-3 */
+th:nth-child(10), td:nth-child(10) { width: 260px; text-align: center; } /* 2-1 */
+th:nth-child(11), td:nth-child(11) { width: 260px; text-align: center; } /* 2-2 */
+th:nth-child(12), td:nth-child(12) { width: 260px; text-align: center; } /* 2-3 */
+th:nth-child(13), td:nth-child(13) { width: 260px; text-align: center; } /* 3-1 */
+th:nth-child(14), td:nth-child(14) { width: 260px; text-align: center; } /* 3-2 */
+th:nth-child(15), td:nth-child(15) { width: 260px; text-align: center; } /* 3-3 */
+th:nth-child(16), td:nth-child(16) { width: 260px; text-align: center; } /* 4-1 */
+th:nth-child(17), td:nth-child(17) { width: 260px; text-align: center; } /* 4-2 */
+th:nth-child(18), td:nth-child(18) { width: 260px; text-align: center; } /* 4-3 */
 
 /* 컨트롤 버튼 */
 .controls {
-    padding: 20px;
+    padding: 8px 12px; /* 한글 주석: 높이 최소화 */
     text-align: center;
-    background-color: #f8f9fa;
-    border-top: 1px solid #dee2e6;
+    background-color: transparent; /* 한글 주석: 배경 제거로 시각적 공간 축소 */
+    border-top: none;
+    position: sticky; /* 한글 주석: 컨테이너 하단에 고정 느낌으로 배치 */
+    bottom: 0;
 }
 
 .btn {
     background-color: #007bff;
     color: white;
     border: none;
-    padding: 10px 20px;
-    margin: 0 5px;
+    padding: 8px 14px; /* 한글 주석: 버튼 높이 축소 */
+    margin: 2px 4px; /* 한글 주석: 간격 축소 */
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
@@ -290,6 +352,14 @@ th:nth-child(17), td:nth-child(17) { width: 300px; text-align: center; } /* 4-3 
 
 .btn:active {
     transform: translateY(1px);
+}
+
+/* 한글 주석: 위험 작업용 버튼 스타일 */
+.btn-danger {
+    background-color: #dc3545;
+}
+.btn-danger:hover {
+    background-color: #b02a37;
 }
 
 /* 반응형 디자인 */
@@ -374,7 +444,7 @@ input[type="checkbox"] {
     height: 100%;
     border: none;
     background: transparent;
-    padding-top: 20px;
+    padding-top: 6px; /* 한글 주석: 패딩 축소로 스크롤 방지 */
     margin: 0;
     font-size: 12px;
     text-align: center;
@@ -389,6 +459,7 @@ input[type="checkbox"] {
     right: 0;
     bottom: 0;
     line-height: 1.2;
+    overflow: hidden; /* 한글 주석: 내부 스크롤 제거 */
 }
 
 .stage-input:focus {
