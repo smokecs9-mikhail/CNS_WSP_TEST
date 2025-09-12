@@ -7,7 +7,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
 import { getDatabase, ref, push, set, onValue, remove } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
 
-// Firebase 설정 (test_sche.html과 동일한 설정 사용)
+// Firebase 설정 (sche.html과 동일한 설정 사용)
 const firebaseConfig = {
     apiKey: "AIzaSyBIaa_uz9PaofNXZjHpgkm-wjT4qhaN-vM",
     authDomain: "csy-todo-test.firebaseapp.com",
@@ -61,9 +61,24 @@ const STABILITY_FACTORS = { 1: -0.02, 2: -0.05, 3: -0.065, 4: -0.0, 5: -0.1 };
 const ACCESS_FACTORS = { 1: +0.0001, 2: -0.035, 3: -0.05, 4: -0.10, 5: -0.15 };
 const FACILITY_FACTORS = { 1: +0.0001, 2: -0.015, 3: -0.03, 4: -0.045, 5: -0.06 };
 
-// KOSIS API 설정
-const KOSIS_API_KEY = "MDM1MGMwN2NmYjc2NDgyMGI0M2Y5YmE0NWJhYzllMDQ=";
-const KOSIS_API_ENDPOINT = "https://kosis.kr/openapi/Param/statisticsParameterData.do";
+// KOSIS 프록시 호출 유틸 (서버가 /api/kosis 제공)
+async function fetchKosisViaProxy(params) {
+    const query = new URLSearchParams(params).toString();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+        const resp = await fetch(`/api/kosis?${query}`, { signal: controller.signal });
+        if (!resp.ok) throw new Error(`KOSIS 프록시 오류: ${resp.status}`);
+        const contentType = resp.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) return await resp.json();
+        return await resp.text();
+    } catch (err) {
+        console.error('KOSIS 호출 실패:', err);
+        return null;
+    } finally {
+        clearTimeout(timer);
+    }
+}
 
 // ================== 전역 변수 ==================
 let calculator;

@@ -1,5 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
 import { getDatabase, ref, get, set, push } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -15,6 +16,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
+const auth = getAuth(app);
 
 document.addEventListener('DOMContentLoaded', function() {
     const loginForm = document.getElementById('loginForm');
@@ -38,93 +40,136 @@ document.addEventListener('DOMContentLoaded', function() {
         window.location.href = 'signup.html';
     });
 
-    // 로그인 처리 함수
+    // 로그인 처리 함수 (Firebase Auth 사용)
     async function handleLogin() {
         const userId = userIdInput.value.trim();
         const password = userPasswordInput.value;
         const keepLogin = keepLoginCheckbox.checked;
 
         try {
-            // 관리자 계정 확인
-            if (userId === 'admin' && password === '0000') {
-                // 관리자 계정 로그인 성공
-                errorMessage.textContent = '';
-                
-                // 로그인 정보 저장
-                if (keepLogin) {
-                    localStorage.setItem('isLoggedIn', 'true');
-                    localStorage.setItem('userId', userId);
-                    localStorage.setItem('userRole', 'admin');
-                    localStorage.setItem('keepLogin', 'true');
-                } else {
-                    sessionStorage.setItem('isLoggedIn', 'true');
-                    sessionStorage.setItem('userId', userId);
-                    sessionStorage.setItem('userRole', 'admin');
-                }
-
-                // 관리자 페이지로 이동
-                window.location.href = 'admin.html';
-                return;
-            }
-
-            // Firebase에서 사용자 확인
+            // 이메일 형식으로 변환 (Firebase Auth는 이메일을 요구함)
+            const email = `${userId}@cnsinc.co.kr`;
+            
+            // Firebase Auth로 로그인 시도
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            const firebaseUser = userCredential.user;
+            
+            // Firebase Database에서 사용자 정보 가져오기 (users 기준)
             const usersRef = ref(database, 'users');
             const snapshot = await get(usersRef);
             const users = snapshot.val() || {};
             
-            // 사용자 찾기
-            const user = Object.values(users).find(u => u.id === userId && u.password === password);
+            // UID로 매칭되는 사용자 찾기
+            let userData = null;
+            for (const key in users) {
+                if (users[key] && users[key].firebaseUid === firebaseUser.uid) {
+                    userData = users[key];
+                    break;
+                }
+            }
             
-            if (user && user.status === 'approved') {
-                // 회원가입된 사용자 로그인 성공
+            if (userData && userData.status === 'approved') {
+                // 로그인 성공
                 errorMessage.textContent = '';
                 
                 // 로그인 정보 저장
                 if (keepLogin) {
+                    // 로컬스토리지는 최소 정보만 저장
                     localStorage.setItem('isLoggedIn', 'true');
-                    localStorage.setItem('userId', userId);
-                    localStorage.setItem('userName', user.name);
-                    localStorage.setItem('userRole', user.role);
+                    localStorage.setItem('firebaseUid', firebaseUser.uid);
                     localStorage.setItem('keepLogin', 'true');
                 } else {
                     sessionStorage.setItem('isLoggedIn', 'true');
-                    sessionStorage.setItem('userId', userId);
-                    sessionStorage.setItem('userName', user.name);
-                    sessionStorage.setItem('userRole', user.role);
+                    sessionStorage.setItem('userId', userData.id);
+                    sessionStorage.setItem('userName', userData.name);
+                    sessionStorage.setItem('userRole', userData.role);
+                    sessionStorage.setItem('userEmail', email);
+                    sessionStorage.setItem('firebaseUid', firebaseUser.uid);
                 }
 
                 // 권한에 따른 페이지 이동
-                if (user.role === 'admin') {
+                if (userData.role === 'admin') {
                     window.location.href = 'admin.html';
                 } else {
                     window.location.href = 'main.html';
                 }
-            } else if (user && user.status === 'pending') {
+            } else if (userData && userData.status === 'pending') {
                 // 승인 대기 중인 사용자
+                await signOut(auth); // Firebase Auth에서 로그아웃
                 errorMessage.textContent = '승인 대기 중입니다. 관리자의 승인을 기다려주세요.';
             } else {
-                // 로그인 실패
+                // 사용자 정보가 없거나 승인되지 않음
+                await signOut(auth); // Firebase Auth에서 로그아웃
                 errorMessage.textContent = '아이디 또는 비밀번호가 올바르지 않습니다.';
             }
         } catch (error) {
             console.error('로그인 오류:', error);
-            errorMessage.textContent = '로그인 중 오류가 발생했습니다. 다시 시도해주세요.';
+            if (error.code === 'auth/user-not-found') {
+                errorMessage.textContent = '존재하지 않는 사용자입니다.';
+            } else if (error.code === 'auth/wrong-password') {
+                errorMessage.textContent = '비밀번호가 올바르지 않습니다.';
+            } else if (error.code === 'auth/invalid-email') {
+                errorMessage.textContent = '이메일 형식이 올바르지 않습니다.';
+            } else if (error.code === 'auth/too-many-requests') {
+                errorMessage.textContent = '너무 많은 로그인 시도가 있었습니다. 잠시 후 다시 시도해주세요.';
+            } else {
+                errorMessage.textContent = '로그인 중 오류가 발생했습니다. 다시 시도해주세요.';
+            }
         }
     }
 
-    // 로그인 상태 확인 함수
+    // 로그인 상태 확인 함수 (Firebase Auth 사용)
     function checkLoginStatus() {
-        const isLoggedIn = localStorage.getItem('isLoggedIn') || sessionStorage.getItem('isLoggedIn');
-        const userRole = localStorage.getItem('userRole') || sessionStorage.getItem('userRole');
-        
-        if (isLoggedIn === 'true') {
-            // 로그인 상태라면 계정 권한에 따라 적절한 페이지로 이동
-            if (userRole === 'admin') {
-                window.location.href = 'admin.html';
-            } else if (userRole === 'user') {
-                window.location.href = 'main.html';
+        onAuthStateChanged(auth, async (firebaseUser) => {
+            if (firebaseUser) {
+                // Firebase Auth에 로그인된 사용자가 있음
+                try {
+                    // 사용자 정보 가져오기 (users 기준)
+                    const usersRef = ref(database, 'users');
+                    const snapshot = await get(usersRef);
+                    const users = snapshot.val() || {};
+                    let userData = null;
+                    for (const key in users) {
+                        if (users[key] && users[key].firebaseUid === firebaseUser.uid) {
+                            userData = users[key];
+                            break;
+                        }
+                    }
+                    
+                    if (userData && userData.status === 'approved') {
+                        // 로그인 정보 저장
+                        const isKeepLogin = localStorage.getItem('keepLogin') === 'true';
+                        if (isKeepLogin) {
+                            // 로컬스토리지는 최소 정보만 유지
+                            localStorage.setItem('isLoggedIn', 'true');
+                            localStorage.setItem('firebaseUid', firebaseUser.uid);
+                        } else {
+                            sessionStorage.setItem('isLoggedIn', 'true');
+                            sessionStorage.setItem('userId', userData.id);
+                            sessionStorage.setItem('userName', userData.name);
+                            sessionStorage.setItem('userRole', userData.role);
+                            sessionStorage.setItem('userEmail', firebaseUser.email);
+                            sessionStorage.setItem('firebaseUid', firebaseUser.uid);
+                        }
+                        
+                        // 권한에 따른 페이지 이동
+                        if (window.location.pathname !== '/index.html' && window.location.pathname !== '/' && !window.location.href.includes('index.html')) {
+                            if (userData.role === 'admin') {
+                                window.location.href = 'admin.html';
+                            } else {
+                                window.location.href = 'main.html';
+                            }
+                        }
+                    } else {
+                        // 사용자 정보가 없거나 승인되지 않음
+                        await signOut(auth);
+                    }
+                } catch (error) {
+                    console.error('사용자 정보 확인 오류:', error);
+                    await signOut(auth);
+                }
             }
-        }
+        });
     }
 
     // 입력 필드 포커스 시 에러 메시지 초기화

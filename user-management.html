@@ -31,7 +31,7 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link active">
+                                <a href="user-management.html" class="nav-link active">
                                     <i class="fas fa-chevron-right"></i>
                                     사용자 관리
                                 </a>
@@ -43,15 +43,21 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" class="nav-link">
+                                <a href="cleanup-users.html" class="nav-link">
                                     <i class="fas fa-chevron-right"></i>
-                                    시스템 설정
+                                    데이터 정리
                                 </a>
                             </li>
                             <li class="nav-item">
                                 <a href="#" class="nav-link">
                                     <i class="fas fa-chevron-right"></i>
-                                    로그 관리
+                                    시스템 설정(작업중)
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" class="nav-link">
+                                    <i class="fas fa-chevron-right"></i>
+                                    로그 관리(작업중)
                                 </a>
                             </li>
                         </ul>
@@ -236,6 +242,13 @@
                                 <option value="approved">승인 완료</option>
                                 <option value="rejected">승인 거부</option>
                             </select>
+                        </div>
+                        <div class="mb-3">
+                            <div class="alert alert-warning mb-0" role="alert">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                비밀번호 변경은 보안을 위해 관리자 콘솔에서만 가능합니다.<br>
+                                Firebase 콘솔 → Authentication → Users에서 해당 사용자의 비밀번호를 변경해 주세요.
+                            </div>
                         </div>
                     </form>
                 </div>

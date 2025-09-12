@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // 승인 데이터 로드
+    // 승인 데이터 로드 (users 사용)
     async function loadApprovalData() {
         try {
             console.log('승인 데이터 로드 시작...');
@@ -129,9 +129,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // 승인 테이블 업데이트
+    // 승인 테이블 업데이트 (XSS 방지: DOM 조립)
     function updateApprovalTable(users) {
-        approvalTableBody.innerHTML = '';
+        approvalTableBody.textContent = '';
         
         if (users.length === 0) {
             noDataMessage.style.display = 'block';
@@ -142,34 +142,61 @@ document.addEventListener('DOMContentLoaded', function() {
         
         users.forEach((user, index) => {
             const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${user.name}</td>
-                <td>${user.id}</td>
-                <td>
-                    <span class="role-badge ${user.role}">
-                        ${user.role === 'admin' ? '관리자' : '사용자'}
-                    </span>
-                </td>
-                <td>${formatDate(user.createdAt)}</td>
-                <td>
-                    <span class="status-badge ${user.status}">
-                        ${getStatusText(user.status)}
-                    </span>
-                </td>
-                <td>
-                    ${user.status === 'pending' ? `
-                        <button class="btn btn-success btn-sm" onclick="showApprovalModal('${user.id}', 'approve')">
-                            <i class="fas fa-check"></i> 승인
-                        </button>
-                        <button class="btn btn-danger btn-sm" onclick="showApprovalModal('${user.id}', 'reject')">
-                            <i class="fas fa-times"></i> 거부
-                        </button>
-                    ` : `
-                        <span class="text-muted">처리완료</span>
-                    `}
-                </td>
-            `;
+
+            const tdIndex = document.createElement('td');
+            tdIndex.textContent = String(index + 1);
+
+            const tdName = document.createElement('td');
+            tdName.textContent = user.name || '';
+
+            const tdId = document.createElement('td');
+            tdId.textContent = user.id || '';
+
+            const tdRole = document.createElement('td');
+            const roleSpan = document.createElement('span');
+            roleSpan.className = `role-badge ${user.role}`;
+            roleSpan.textContent = user.role === 'admin' ? '관리자' : '사용자';
+            tdRole.appendChild(roleSpan);
+
+            const tdCreated = document.createElement('td');
+            tdCreated.textContent = user.createdAt ? formatDate(user.createdAt) : '-';
+
+            const tdStatus = document.createElement('td');
+            const statusSpan = document.createElement('span');
+            statusSpan.className = `status-badge ${user.status}`;
+            statusSpan.textContent = getStatusText(user.status);
+            tdStatus.appendChild(statusSpan);
+
+            const tdActions = document.createElement('td');
+            if (user.status === 'pending') {
+                const approveBtn = document.createElement('button');
+                approveBtn.className = 'btn btn-success btn-sm';
+                approveBtn.innerHTML = '<i class="fas fa-check"></i> 승인';
+                approveBtn.addEventListener('click', () => window.showApprovalModal(user.id, 'approve'));
+
+                const rejectBtn = document.createElement('button');
+                rejectBtn.className = 'btn btn-danger btn-sm';
+                rejectBtn.style.marginLeft = '6px';
+                rejectBtn.innerHTML = '<i class="fas fa-times"></i> 거부';
+                rejectBtn.addEventListener('click', () => window.showApprovalModal(user.id, 'reject'));
+
+                tdActions.appendChild(approveBtn);
+                tdActions.appendChild(rejectBtn);
+            } else {
+                const doneSpan = document.createElement('span');
+                doneSpan.className = 'text-muted';
+                doneSpan.textContent = '처리완료';
+                tdActions.appendChild(doneSpan);
+            }
+
+            row.appendChild(tdIndex);
+            row.appendChild(tdName);
+            row.appendChild(tdId);
+            row.appendChild(tdRole);
+            row.appendChild(tdCreated);
+            row.appendChild(tdStatus);
+            row.appendChild(tdActions);
+
             approvalTableBody.appendChild(row);
         });
     }
@@ -228,11 +255,14 @@ document.addEventListener('DOMContentLoaded', function() {
             if (userKey) {
                 // 사용자 상태 업데이트
                 const userRef = ref(database, `users/${userKey}`);
-                await set(userRef, {
+                const updatedUser = {
                     ...usersData[userKey],
                     status: newStatus,
                     processedAt: new Date().toISOString()
-                });
+                };
+                await set(userRef, updatedUser);
+
+                // migratedUsers 동기화 제거: 이제 users만 사용
                 
                 // 데이터 새로고침
                 loadApprovalData();
@@ -247,7 +277,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // 통계 업데이트
+    // 통계 업데이트 (users 사용)
     async function updateStats() {
         try {
             const usersRef = ref(database, 'users');

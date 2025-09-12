@@ -1,6 +1,7 @@
 // 사용자 관리 페이지 JavaScript
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
 import { getDatabase, ref, get, set, remove } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+// import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-functions.js";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -16,6 +17,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
+// const functions = getFunctions(app);
 
 document.addEventListener('DOMContentLoaded', function() {
     const adminName = document.getElementById('adminName');
@@ -53,6 +55,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const editUserId = document.getElementById('editUserId');
     const editUserRole = document.getElementById('editUserRole');
     const editUserStatus = document.getElementById('editUserStatus');
+    // 비밀번호 관련 요소 제거됨
     
     let allUsers = [];
     let currentUserKey = null;
@@ -62,12 +65,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 초기 데이터 로드
     loadUsers();
-    updateUserStats();
 
     // 이벤트 리스너
     refreshUsersBtn.addEventListener('click', () => {
         loadUsers();
-        updateUserStats();
     });
     
     searchInput.addEventListener('input', filterUsers);
@@ -83,30 +84,45 @@ document.addEventListener('DOMContentLoaded', function() {
     
     document.getElementById('saveUserBtn').addEventListener('click', saveUserChanges);
     document.getElementById('deleteUserBtn').addEventListener('click', deleteUser);
+    // 비밀번호 관련 버튼 제거됨
+    
+    // 비밀번호 토글 기능 제거됨
+    
+    // 비밀번호 확인 실시간 검증 제거됨
+
+    // 비밀번호 일치 검증 함수 제거됨
+    
+    // 비밀번호 강도 검증 함수 제거됨
 
     // 관리자 권한 확인 함수
     function checkAdminStatus() {
-        const isLoggedIn = localStorage.getItem('isLoggedIn') || sessionStorage.getItem('isLoggedIn');
-        const userId = localStorage.getItem('userId') || sessionStorage.getItem('userId');
-        const userRole = localStorage.getItem('userRole') || sessionStorage.getItem('userRole');
-        
-        if (isLoggedIn !== 'true' || userRole !== 'admin') {
+        // 최소 정보로 로그인 여부 확인
+        const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true' || sessionStorage.getItem('isLoggedIn') === 'true';
+        const firebaseUid = localStorage.getItem('firebaseUid') || sessionStorage.getItem('firebaseUid');
+        if (!isLoggedIn || !firebaseUid) {
             window.location.href = 'index.html';
             return;
         }
 
-        if (userId) {
-            const storedUserName = localStorage.getItem('userName') || sessionStorage.getItem('userName');
-            if (storedUserName) {
-                adminName.textContent = `${storedUserName}님`;
-            } else {
-                adminName.textContent = `${userId}님`;
+        // RTDB에서 관리자 확인
+        get(ref(database, 'users')).then(snap => {
+            const users = snap.val() || {};
+            let me = null;
+            for (const key in users) {
+                if (users[key] && users[key].firebaseUid === firebaseUid) { me = users[key]; break; }
             }
+            if (!me || me.role !== 'admin' || me.status !== 'approved') {
+                window.location.href = 'index.html';
+                return;
+            }
+            adminName.textContent = `${me.name || me.id}님`;
             adminDept.textContent = '관리자';
-        }
+        }).catch(() => {
+            window.location.href = 'index.html';
+        });
     }
     
-    // 사용자 데이터 로드
+    // 사용자 데이터 로드 (users 사용)
     async function loadUsers() {
         try {
             console.log('사용자 데이터 로드 시작...');
@@ -126,6 +142,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // 테이블 업데이트
             filterUsers();
+            
+            // 통계 업데이트
+            updateUserStats();
             
         } catch (error) {
             console.error('사용자 데이터 로드 오류:', error);
@@ -151,9 +170,9 @@ document.addEventListener('DOMContentLoaded', function() {
         updateUserTable(filteredUsers);
     }
     
-    // 사용자 테이블 업데이트
+    // 사용자 테이블 업데이트 (XSS 방지: DOM 조립)
     function updateUserTable(users) {
-        userTableBody.innerHTML = '';
+        userTableBody.textContent = '';
         
         if (users.length === 0) {
             noUserMessage.style.display = 'block';
@@ -164,34 +183,65 @@ document.addEventListener('DOMContentLoaded', function() {
         
         users.forEach((user, index) => {
             const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${index + 1}</td>
-                <td>${user.name}</td>
-                <td>${user.id}</td>
-                <td>
-                    <span class="role-badge ${user.role}">
-                        ${user.role === 'admin' ? '관리자' : '사용자'}
-                    </span>
-                </td>
-                <td>
-                    <span class="status-badge ${user.status}">
-                        ${getStatusText(user.status)}
-                    </span>
-                </td>
-                <td>${formatDate(user.createdAt)}</td>
-                <td>${user.processedAt ? formatDate(user.processedAt) : '-'}</td>
-                <td>
-                    <button class="btn btn-info btn-sm" onclick="showUserDetail('${user.key}')">
-                        <i class="fas fa-eye"></i> 보기
-                    </button>
-                    <button class="btn btn-warning btn-sm" onclick="editUser('${user.key}')">
-                        <i class="fas fa-edit"></i> 수정
-                    </button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteUserConfirm('${user.key}')">
-                        <i class="fas fa-trash"></i> 삭제
-                    </button>
-                </td>
-            `;
+
+            const tdIndex = document.createElement('td');
+            tdIndex.textContent = String(index + 1);
+
+            const tdName = document.createElement('td');
+            tdName.textContent = user.name || '';
+
+            const tdId = document.createElement('td');
+            tdId.textContent = user.id || '';
+
+            const tdRole = document.createElement('td');
+            const roleSpan = document.createElement('span');
+            roleSpan.className = `role-badge ${user.role}`;
+            roleSpan.textContent = user.role === 'admin' ? '관리자' : '사용자';
+            tdRole.appendChild(roleSpan);
+
+            const tdStatus = document.createElement('td');
+            const statusSpan = document.createElement('span');
+            statusSpan.className = `status-badge ${user.status}`;
+            statusSpan.textContent = getStatusText(user.status);
+            tdStatus.appendChild(statusSpan);
+
+            const tdCreated = document.createElement('td');
+            tdCreated.textContent = user.createdAt ? formatDate(user.createdAt) : '-';
+
+            const tdProcessed = document.createElement('td');
+            tdProcessed.textContent = user.processedAt ? formatDate(user.processedAt) : '-';
+
+            const tdActions = document.createElement('td');
+            const viewBtn = document.createElement('button');
+            viewBtn.className = 'btn btn-info btn-sm';
+            viewBtn.innerHTML = '<i class="fas fa-eye"></i> 보기';
+            viewBtn.addEventListener('click', () => window.showUserDetail(user.key));
+
+            const editBtn = document.createElement('button');
+            editBtn.className = 'btn btn-warning btn-sm';
+            editBtn.style.marginLeft = '6px';
+            editBtn.innerHTML = '<i class="fas fa-edit"></i> 수정';
+            editBtn.addEventListener('click', () => window.editUser(user.key));
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'btn btn-danger btn-sm';
+            delBtn.style.marginLeft = '6px';
+            delBtn.innerHTML = '<i class="fas fa-trash"></i> 삭제';
+            delBtn.addEventListener('click', () => window.deleteUserConfirm(user.key));
+
+            tdActions.appendChild(viewBtn);
+            tdActions.appendChild(editBtn);
+            tdActions.appendChild(delBtn);
+
+            row.appendChild(tdIndex);
+            row.appendChild(tdName);
+            row.appendChild(tdId);
+            row.appendChild(tdRole);
+            row.appendChild(tdStatus);
+            row.appendChild(tdCreated);
+            row.appendChild(tdProcessed);
+            row.appendChild(tdActions);
+
             userTableBody.appendChild(row);
         });
     }
@@ -236,6 +286,8 @@ document.addEventListener('DOMContentLoaded', function() {
         editUserId.value = user.id;
         editUserRole.value = user.role;
         editUserStatus.value = user.status;
+        
+        // 비밀번호 필드 제거됨
     }
     
     // 사용자 정보 저장
@@ -253,12 +305,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 processedAt: new Date().toISOString()
             };
             
+            // users 경로에만 업데이트
             const userRef = ref(database, `users/${currentUserKey}`);
             await set(userRef, updatedUser);
             
             editUserModal.hide();
             loadUsers();
-            updateUserStats();
+            
             showNotification('사용자 정보가 성공적으로 수정되었습니다.', 'success');
             
         } catch (error) {
@@ -267,6 +320,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // 비밀번호 재설정 기능 제거됨
+
+    // 비밀번호 재설정 이메일 발송 기능 제거됨
+
     // 사용자 삭제 확인
     window.deleteUserConfirm = function(userKey) {
         const user = allUsers.find(u => u.key === userKey);
@@ -285,7 +342,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             userDetailModal.hide();
             loadUsers();
-            updateUserStats();
             showNotification('사용자가 성공적으로 삭제되었습니다.', 'success');
             
         } catch (error) {
@@ -296,15 +352,23 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 사용자 통계 업데이트
     function updateUserStats() {
+        console.log('통계 업데이트 시작...');
+        console.log('allUsers 배열:', allUsers);
+        console.log('allUsers 길이:', allUsers.length);
+        
         const total = allUsers.length;
         const active = allUsers.filter(user => user.status === 'approved').length;
         const admin = allUsers.filter(user => user.role === 'admin').length;
         const inactive = allUsers.filter(user => user.status === 'rejected').length;
         
+        console.log('통계 계산 결과:', { total, active, admin, inactive });
+        
         totalUserCount.textContent = total;
         activeUserCount.textContent = active;
         adminUserCount.textContent = admin;
         inactiveUserCount.textContent = inactive;
+        
+        console.log('통계 업데이트 완료');
     }
     
     // 날짜 포맷팅

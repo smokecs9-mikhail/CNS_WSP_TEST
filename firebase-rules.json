@@ -1,6 +1,45 @@
 {
   "rules": {
-    ".read": true,
-    ".write": true
+    ".read": false,
+    ".write": false,
+
+    "users": {
+      // 관리자 전체 읽기 허용
+      ".read": "auth != null && root.child('meta/admins').child(auth.uid).val() === true",
+      "$key": {
+        // 개별 레코드 읽기: 관리자 또는 본인(firebaseUid 매칭)
+        ".read": "auth != null && (root.child('meta/admins').child(auth.uid).val() === true || data.child('firebaseUid').val() === auth.uid)",
+        // 쓰기: 관리자 또는 비관리자의 신규 생성만 허용(승인 대기, 본인 UID)
+        ".write": "auth != null && (root.child('meta/admins').child(auth.uid).val() === true || (!data.exists() && newData.child('firebaseUid').val() === auth.uid && newData.child('status').val() === 'pending'))"
+      }
+    },
+
+    // 더 이상 사용하지 않음: 전면 차단
+    "migratedUsers": {
+      ".read": false,
+      ".write": false
+    },
+
+    "scheduleData": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+
+    "propertyCalculator": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+
+    "meta": {
+      // 메타 정보는 관리자 전용
+      ".read": "auth != null && root.child('meta/admins').child(auth.uid).val() === true",
+      ".write": "auth != null && root.child('meta/admins').child(auth.uid).val() === true",
+      "admins": {
+        "$uid": {
+          ".read": "auth != null && root.child('meta/admins').child(auth.uid).val() === true",
+          ".write": "auth != null && root.child('meta/admins').child(auth.uid).val() === true"
+        }
+      }
+    }
   }
 }

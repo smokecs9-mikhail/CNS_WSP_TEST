@@ -1,3 +1,24 @@
+// Firebase imports
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+
+// Firebase 설정 (script.js와 동일)
+const firebaseConfig = {
+    apiKey: "AIzaSyBIaa_uz9PaofNXZjHpgkm-wjT4qhaN-vM",
+    authDomain: "csy-todo-test.firebaseapp.com",
+    databaseURL: "https://csy-todo-test-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "csy-todo-test",
+    storageBucket: "csy-todo-test.firebasestorage.app",
+    messagingSenderId: "841236508097",
+    appId: "1:841236508097:web:18fadfa64353a25a61d340"
+};
+
+// Firebase 초기화
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const database = getDatabase(app);
+
 document.addEventListener('DOMContentLoaded', function() {
     const adminName = document.getElementById('adminName');
     const adminDept = document.getElementById('adminDept');
@@ -18,6 +39,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const mobileMenuToggle = document.getElementById('mobileMenuToggle');
     const mobileOverlay = document.getElementById('mobileOverlay');
     const sidebar = document.querySelector('.sidebar');
+    
+    // 로그아웃 상태 플래그
+    let isLoggingOut = false;
 
     // 관리자 권한 확인
     checkAdminStatus();
@@ -25,9 +49,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // 통계 업데이트
     updateStats();
 
-    // 메뉴 이벤트 리스너
-    userManagementMenu.addEventListener('click', () => loadUserManagement());
-    approvalMenu.addEventListener('click', () => loadApprovalManagement());
+    // 메뉴는 이제 직접 링크로 처리되므로 이벤트 리스너 불필요
+    // 필요시 추가 기능을 위한 이벤트 리스너만 유지
 
     // 로그아웃 버튼 이벤트
     logoutBtn.addEventListener('click', function() {
@@ -48,35 +71,63 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 관리자 권한 확인 함수
+    // 관리자 권한 확인 함수 (Firebase Auth 사용)
     function checkAdminStatus() {
-        const isLoggedIn = localStorage.getItem('isLoggedIn') || sessionStorage.getItem('isLoggedIn');
-        const userId = localStorage.getItem('userId') || sessionStorage.getItem('userId');
-        const userRole = localStorage.getItem('userRole') || sessionStorage.getItem('userRole');
-        
-        if (isLoggedIn !== 'true' || userRole !== 'admin') {
-            // 관리자가 아니거나 로그인되지 않은 상태라면 로그인 페이지로 리다이렉트
-            window.location.href = 'index.html';
-            return;
-        }
+        onAuthStateChanged(auth, async (firebaseUser) => {
+            // 로그아웃 중이면 리다이렉트하지 않음
+            if (isLoggingOut) {
+                return;
+            }
+            
+            if (!firebaseUser) {
+                // Firebase Auth에 로그인된 사용자가 없음
+                window.location.href = 'index.html';
+                return;
+            }
 
-        // 관리자 정보 표시
-        if (userId) {
-            adminName.textContent = `${userId}님`;
-            adminDept.textContent = '관리자';
-        }
+            try {
+                // 사용자 정보 가져오기 (users 기준, firebaseUid로 매칭)
+                const usersRef = ref(database, 'users');
+                const snapshot = await get(usersRef);
+                const users = snapshot.val() || {};
+                let userData = null;
+                for (const key in users) {
+                    if (users[key] && users[key].firebaseUid === firebaseUser.uid) {
+                        userData = users[key];
+                        break;
+                    }
+                }
+                
+                if (!userData || userData.role !== 'admin' || userData.status !== 'approved') {
+                    // 관리자가 아니거나 승인되지 않은 사용자
+                    await signOut(auth);
+                    window.location.href = 'index.html';
+                    return;
+                }
+
+                // 관리자 정보 표시
+                adminName.textContent = `${userData.name}님`;
+                adminDept.textContent = '관리자';
+                
+            } catch (error) {
+                console.error('관리자 권한 확인 오류:', error);
+                await signOut(auth);
+                window.location.href = 'index.html';
+            }
+        });
     }
     
-    // 통계 업데이트 함수
+    // 통계 업데이트 함수 (users 기준)
     async function updateStats() {
         try {
             console.log('통계 업데이트 시작...');
             
-            // Firebase에서 사용자 데이터 가져오기
-            const response = await fetch('https://csy-todo-test-default-rtdb.asia-southeast1.firebasedatabase.app/users.json');
-            const usersData = await response.json() || {};
+            // users 데이터 가져오기
+            const usersRef = ref(database, 'users');
+            const snapshot = await get(usersRef);
+            const usersData = snapshot.val() || {};
             
-            console.log('Firebase에서 받은 데이터:', usersData);
+            console.log('Firebase에서 받은 데이터(users):', usersData);
             
             const users = Object.values(usersData);
             console.log('사용자 배열:', users);
@@ -99,16 +150,52 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // migratedUsers 정리 로직은 더 이상 사용하지 않음
+    
     // 사용자 관리 페이지 로드
     function loadUserManagement() {
-        // 사용자 관리 페이지로 이동
-        window.location.href = 'user-management.html';
+        try {
+            console.log('사용자 관리 페이지로 이동 중...');
+            console.log('현재 URL:', window.location.href);
+            console.log('이동할 URL:', 'user-management.html');
+            
+            // 여러 방법으로 페이지 이동 시도
+            try {
+                // 방법 1: window.location.href
+                window.location.href = 'user-management.html';
+            } catch (hrefError) {
+                console.log('href 방법 실패, assign 시도:', hrefError);
+                try {
+                    // 방법 2: window.location.assign
+                    window.location.assign('user-management.html');
+                } catch (assignError) {
+                    console.log('assign 방법 실패, replace 시도:', assignError);
+                    // 방법 3: window.location.replace
+                    window.location.replace('user-management.html');
+                }
+            }
+            
+            // 이동 확인을 위한 추가 로그
+            setTimeout(() => {
+                console.log('페이지 이동 후 URL:', window.location.href);
+            }, 100);
+            
+        } catch (error) {
+            console.error('사용자 관리 페이지 이동 오류:', error);
+            alert('사용자 관리 페이지로 이동할 수 없습니다: ' + error.message);
+        }
     }
     
     // 승인 관리 페이지 로드
     function loadApprovalManagement() {
-        // 승인관리 페이지로 이동
-        window.location.href = 'approval.html';
+        try {
+            console.log('승인 관리 페이지로 이동 중...');
+            // 승인관리 페이지로 이동
+            window.location.href = 'approval.html';
+        } catch (error) {
+            console.error('승인 관리 페이지 이동 오류:', error);
+            alert('승인 관리 페이지로 이동할 수 없습니다.');
+        }
     }
     
     
@@ -125,19 +212,44 @@ document.addEventListener('DOMContentLoaded', function() {
         welcomeMessage.style.display = 'none';
     }
 
-    // 로그아웃 함수
-    function logout() {
-        // 모든 로그인 정보 삭제
-        localStorage.removeItem('isLoggedIn');
-        localStorage.removeItem('userId');
-        localStorage.removeItem('userRole');
-        localStorage.removeItem('keepLogin');
-        sessionStorage.removeItem('isLoggedIn');
-        sessionStorage.removeItem('userId');
-        sessionStorage.removeItem('userRole');
+    // 로그아웃 함수 (리다이렉트 방지)
+    async function logout() {
+        try {
+            console.log('로그아웃 시작...');
+            
+            // 로그아웃 상태 플래그 설정
+            isLoggingOut = true;
+            
+            // 모든 로그인 정보 삭제 (Firebase Auth 로그아웃 전에)
+            localStorage.removeItem('isLoggedIn');
+            localStorage.removeItem('userId');
+            localStorage.removeItem('userName');
+            localStorage.removeItem('userRole');
+            localStorage.removeItem('userEmail');
+            localStorage.removeItem('firebaseUid');
+            localStorage.removeItem('keepLogin');
+            sessionStorage.removeItem('isLoggedIn');
+            sessionStorage.removeItem('userId');
+            sessionStorage.removeItem('userName');
+            sessionStorage.removeItem('userRole');
+            sessionStorage.removeItem('userEmail');
+            sessionStorage.removeItem('firebaseUid');
 
-        // 로그인 페이지로 리다이렉트
-        window.location.href = 'index.html';
+            console.log('로컬 스토리지 삭제 완료');
+
+            // Firebase Auth에서 로그아웃
+            await signOut(auth);
+            console.log('Firebase Auth 로그아웃 완료');
+            
+            // 로그인 페이지로 리다이렉트 (즉시)
+            console.log('index.html로 리다이렉트 중...');
+            window.location.href = 'index.html';
+            
+        } catch (error) {
+            console.error('로그아웃 오류:', error);
+            // 오류가 발생해도 로그인 페이지로 이동
+            window.location.href = 'index.html';
+        }
     }
 
     // 모바일 메뉴 토글 함수

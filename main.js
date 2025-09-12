@@ -101,8 +101,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // 웰컴 메시지 숨기기
         welcomeMessage.style.display = 'none';
         
-        // iframe에 test_sche.html 로드
-        contentFrame.src = 'sche000/test_sche.html';
+        // iframe에 sche.html 로드
+        contentFrame.src = 'sche/sche.html';
         contentFrame.style.display = 'block';
         
         // 메뉴 활성화 상태 업데이트

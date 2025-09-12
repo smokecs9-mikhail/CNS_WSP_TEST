@@ -1,0 +1,26 @@
+# env/secrets
+.env
+*.env
+*.pem
+*.key
+serviceAccount*.json
+
+# deps/build
+node_modules/
+dist/
+build/
+
+# logs/cache/temp
+*.log
+*.tmp
+*.cache
+*.local.*
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# admin/ops note: cleanup-users.html stays in repo (exclude at deploy stage)
+
