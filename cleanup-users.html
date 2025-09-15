@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>사용자 데이터 정리</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; background-color: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        pre { background-color: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+        .user-item { margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 3px; }
+        .delete-btn { background-color: #dc3545; }
+        .delete-btn:hover { background-color: #c82333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>사용자 데이터 정리 도구</h1>
+        
+        <div class="section">
+            <h2>1. 현재 사용자 목록</h2>
+            <button onclick="loadUsers()">사용자 목록 로드</button>
+            <div id="usersList"></div>
+        </div>
+
+        <div class="section">
+            <h2>2. 특정 사용자 삭제</h2>
+            <input type="text" id="deleteUserId" placeholder="삭제할 사용자 ID 입력" style="padding: 8px; margin-right: 10px;">
+            <button onclick="deleteUser()" class="delete-btn">사용자 삭제</button>
+            <div id="deleteResult"></div>
+        </div>
+
+        <div class="section">
+            <h2>3. 모든 사용자 데이터 초기화</h2>
+            <button onclick="clearAllUsers()" class="delete-btn">모든 사용자 데이터 삭제</button>
+            <div id="clearResult"></div>
+        </div>
+
+        <div class="section">
+            <h2>4. 비밀번호 필드 일괄 제거 (권장)</h2>
+            <button onclick="removeAllPasswords()">migratedUsers와 users의 password 필드 삭제</button>
+            <div id="passwordCleanupResult"></div>
+        </div>
+
+        <div class="section">
+            <h2>5. migratedUsers → users 병합 (users 우선)</h2>
+            <button onclick="mergeMigratedIntoUsers()">병합 실행</button>
+            <div id="mergeResult"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+        import { getDatabase, ref, get, set, remove, push } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+
+        // Firebase 설정
+        const firebaseConfig = {
+            apiKey: "AIzaSyBIaa_uz9PaofNXZjHpgkm-wjT4qhaN-vM",
+            authDomain: "csy-todo-test.firebaseapp.com",
+            databaseURL: "https://csy-todo-test-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "csy-todo-test",
+            storageBucket: "csy-todo-test.firebasestorage.app",
+            messagingSenderId: "841236508097",
+            appId: "1:841236508097:web:18fadfa64353a25a61d340"
+        };
+
+        // Firebase 초기화
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+        const auth = getAuth(app);
+
+        // 관리자 전용 가드: meta/admins/{uid} === true 확인
+        onAuthStateChanged(auth, async (firebaseUser) => {
+            const container = document.querySelector('.container');
+            if (!firebaseUser) {
+                container.innerHTML = '<div class="error">인증이 필요합니다.</div>';
+                return;
+            }
+            try {
+                const adminRef = ref(database, `meta/admins/${firebaseUser.uid}`);
+                const snap = await get(adminRef);
+                if (snap.val() !== true) {
+                    container.innerHTML = '<div class="error">관리자만 접근할 수 있습니다.</div>';
+                }
+            } catch (_) {
+                container.innerHTML = '<div class="error">권한 확인 중 오류가 발생했습니다.</div>';
+            }
+        });
+
+        // 전역 함수로 설정
+        window.loadUsers = async function() {
+            const resultDiv = document.getElementById('usersList');
+            try {
+                resultDiv.innerHTML = '<div class="info">사용자 목록 로드 중...</div>';
+                
+                // migratedUsers 데이터 가져오기
+                const migratedUsersRef = ref(database, 'migratedUsers');
+                const snapshot = await get(migratedUsersRef);
+                const migratedUsers = snapshot.val() || {};
+                
+                if (Object.keys(migratedUsers).length === 0) {
+                    resultDiv.innerHTML = '<div class="info">등록된 사용자가 없습니다.</div>';
+                    return;
+                }
+                
+                let html = '<h3>migratedUsers 데이터:</h3>';
+                for (const [uid, user] of Object.entries(migratedUsers)) {
+                    html += `
+                        <div class="user-item">
+                            <strong>UID:</strong> ${uid}<br>
+                            <strong>이름:</strong> ${user.name || 'N/A'}<br>
+                            <strong>ID:</strong> ${user.id || 'N/A'}<br>
+                            <strong>역할:</strong> ${user.role || 'N/A'}<br>
+                            <strong>상태:</strong> ${user.status || 'N/A'}<br>
+                            <button onclick="deleteSpecificUser('${uid}')" class="delete-btn">삭제</button>
+                        </div>
+                    `;
+                }
+                
+                resultDiv.innerHTML = html;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">오류: ${error.message}</div>`;
+            }
+        };
+
+        window.deleteSpecificUser = async function(uid) {
+            if (!confirm('정말로 이 사용자를 삭제하시겠습니까?')) return;
+            
+            try {
+                const userRef = ref(database, `migratedUsers/${uid}`);
+                await remove(userRef);
+                alert('사용자가 삭제되었습니다.');
+                loadUsers(); // 목록 새로고침
+            } catch (error) {
+                alert('삭제 중 오류가 발생했습니다: ' + error.message);
+            }
+        };
+
+        window.deleteUser = async function() {
+            const userId = document.getElementById('deleteUserId').value.trim();
+            if (!userId) {
+                alert('사용자 ID를 입력해주세요.');
+                return;
+            }
+            
+            const resultDiv = document.getElementById('deleteResult');
+            try {
+                resultDiv.innerHTML = '<div class="info">사용자 검색 중...</div>';
+                
+                // migratedUsers에서 해당 사용자 찾기
+                const migratedUsersRef = ref(database, 'migratedUsers');
+                const snapshot = await get(migratedUsersRef);
+                const migratedUsers = snapshot.val() || {};
+                
+                let foundUser = null;
+                let userUid = null;
+                
+                for (const [uid, user] of Object.entries(migratedUsers)) {
+                    if (user.id === userId) {
+                        foundUser = user;
+                        userUid = uid;
+                        break;
+                    }
+                }
+                
+                if (!foundUser) {
+                    resultDiv.innerHTML = '<div class="error">해당 사용자를 찾을 수 없습니다.</div>';
+                    return;
+                }
+                
+                if (confirm(`사용자 "${foundUser.name} (${foundUser.id})"를 삭제하시겠습니까?`)) {
+                    const userRef = ref(database, `migratedUsers/${userUid}`);
+                    await remove(userRef);
+                    resultDiv.innerHTML = '<div class="success">사용자가 성공적으로 삭제되었습니다.</div>';
+                    loadUsers(); // 목록 새로고침
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">오류: ${error.message}</div>`;
+            }
+        };
+
+        window.clearAllUsers = async function() {
+            if (!confirm('정말로 모든 사용자 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+            
+            const resultDiv = document.getElementById('clearResult');
+            try {
+                resultDiv.innerHTML = '<div class="info">모든 사용자 데이터 삭제 중...</div>';
+                
+                const migratedUsersRef = ref(database, 'migratedUsers');
+                await remove(migratedUsersRef);
+                
+                resultDiv.innerHTML = '<div class="success">모든 사용자 데이터가 삭제되었습니다.</div>';
+                loadUsers(); // 목록 새로고침
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">오류: ${error.message}</div>`;
+            }
+        };
+
+        // 비밀번호 필드 일괄 제거 함수
+        window.removeAllPasswords = async function() {
+            const resultDiv = document.getElementById('passwordCleanupResult');
+            try {
+                if (!confirm('모든 사용자 레코드에서 password 필드를 제거합니다. 진행할까요?')) return;
+                resultDiv.innerHTML = '<div class="info">비밀번호 필드 삭제 중...</div>';
+
+                // migratedUsers의 password 필드 제거
+                const migratedUsersRef = ref(database, 'migratedUsers');
+                const migratedSnapshot = await get(migratedUsersRef);
+                const migratedUsers = migratedSnapshot.val() || {};
+                let migratedCount = 0;
+                for (const uid of Object.keys(migratedUsers)) {
+                    const passRef = ref(database, `migratedUsers/${uid}/password`);
+                    await remove(passRef);
+                    migratedCount++;
+                }
+
+                // legacy users의 password 필드 제거 (있을 경우)
+                const usersRef = ref(database, 'users');
+                const usersSnapshot = await get(usersRef);
+                const users = usersSnapshot.val() || {};
+                let usersCount = 0;
+                for (const key of Object.keys(users)) {
+                    const passRef = ref(database, `users/${key}/password`);
+                    await remove(passRef);
+                    usersCount++;
+                }
+
+                resultDiv.innerHTML = `<div class="success">삭제 완료: migratedUsers ${migratedCount}건, users ${usersCount}건 처리되었습니다.</div>`;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">오류: ${error.message}</div>`;
+            }
+        };
+
+        // migratedUsers를 users로 병합 (users 데이터 우선)
+        window.mergeMigratedIntoUsers = async function() {
+            const resultDiv = document.getElementById('mergeResult');
+            try {
+                if (!confirm('migratedUsers 데이터를 users로 병합합니다. users 데이터가 우선 적용됩니다. 진행할까요?')) return;
+                resultDiv.innerHTML = '<div class="info">병합 중...</div>';
+
+                // 읽기
+                const migratedUsersRef = ref(database, 'migratedUsers');
+                const usersRef = ref(database, 'users');
+                const [migratedSnap, usersSnap] = await Promise.all([get(migratedUsersRef), get(usersRef)]);
+                const migrated = migratedSnap.val() || {};
+                const users = usersSnap.val() || {};
+
+                // users를 검색하기 편하게 배열로 변환
+                const usersEntries = Object.entries(users); // [key, user]
+
+                let mergedCount = 0;
+                for (const [uid, mUser] of Object.entries(migrated)) {
+                    // 기존 users에서 firebaseUid == uid 인 항목 찾기
+                    let foundKey = null;
+                    for (const [key, u] of usersEntries) {
+                        if (u && u.firebaseUid === uid) {
+                            foundKey = key;
+                            break;
+                        }
+                    }
+
+                    // password 제거
+                    const { password, ...migratedSanitized } = mUser || {};
+
+                    if (foundKey) {
+                        // users 우선: users에 없는 필드만 채워넣기
+                        const current = users[foundKey] || {};
+                        const merged = { ...migratedSanitized, ...current }; // current(users)가 우선되도록 뒤에 둠
+                        await set(ref(database, `users/${foundKey}`), merged);
+                        mergedCount++;
+                    } else {
+                        // 동일 firebaseUid가 없으면 새로 추가
+                        const newRef = push(usersRef);
+                        const newData = { ...migratedSanitized, firebaseUid: uid };
+                        await set(newRef, newData);
+                        mergedCount++;
+                    }
+                }
+
+                resultDiv.innerHTML = `<div class="success">병합 완료: ${mergedCount}건 처리되었습니다. (users 우선)</div>`;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">오류: ${error.message}</div>`;
+            }
+        };
+    </script>
+</body>
+</html>

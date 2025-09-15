@@ -69,6 +69,12 @@ class ScheduleManager {
                 await this.retryFirebaseConnection();
             });
         }
+
+        // 컬럼 리사이징 기능 초기화
+        this.initColumnResizing();
+
+        // 컬럼 너비 초기화 버튼 추가 (개발용)
+        this.addColumnWidthResetButton();
     }
     
     async addRow() {
@@ -708,6 +714,304 @@ class ScheduleManager {
         // 한글 주석: 로컬 데이터가 없을 때도 더 이상 기본 행을 자동 추가하지 않음
         
         // 경고는 updateFirebaseWarning에서 제어
+    }
+
+    // 컬럼 리사이징 기능 초기화
+    initColumnResizing() {
+        console.log('컬럼 리사이징 기능 초기화');
+        const table = document.getElementById('scheduleTable');
+        if (!table) return;
+
+        // 저장된 컬럼 너비 복원
+        this.restoreColumnWidths();
+
+        // 모든 헤더 셀에 리사이징 핸들 추가
+        const headers = table.querySelectorAll('thead th');
+        headers.forEach((header, index) => {
+            // 마지막 컬럼은 리사이징 핸들 추가하지 않음
+            if (index < headers.length - 1) {
+                const handle = document.createElement('div');
+                handle.className = 'column-resize-handle';
+                handle.dataset.columnIndex = index;
+                header.appendChild(handle);
+            }
+        });
+
+        // 리사이징 이벤트 리스너 추가
+        this.attachResizeListeners();
+    }
+
+    // 리사이징 이벤트 리스너 추가
+    attachResizeListeners() {
+        const handles = document.querySelectorAll('.column-resize-handle');
+        
+        handles.forEach(handle => {
+            let isResizing = false;
+            let startX = 0;
+            let startWidth = 0;
+            let columnIndex = 0;
+
+            // 마우스 다운 이벤트
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                isResizing = true;
+                startX = e.clientX;
+                columnIndex = parseInt(handle.dataset.columnIndex);
+                
+                // 현재 컬럼 너비 가져오기
+                const table = document.getElementById('scheduleTable');
+                const header = table.querySelectorAll('thead th')[columnIndex];
+                startWidth = header.offsetWidth;
+                
+                // 핸들 활성화 스타일
+                handle.classList.add('active');
+                
+                // 문서 전체에 이벤트 리스너 추가
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+                
+                // 텍스트 선택 방지
+                document.body.style.userSelect = 'none';
+                document.body.style.cursor = 'col-resize';
+            });
+
+            // 마우스 이동 이벤트
+            const handleMouseMove = (e) => {
+                if (!isResizing) return;
+                
+                const deltaX = e.clientX - startX;
+                const newWidth = Math.max(50, startWidth + deltaX); // 최소 너비 50px
+                
+                // 컬럼 너비 업데이트 (실시간으로 적용)
+                this.resizeColumnRealTime(columnIndex, newWidth);
+            };
+
+            // 마우스 업 이벤트
+            const handleMouseUp = (e) => {
+                if (!isResizing) return;
+                
+                isResizing = false;
+                handle.classList.remove('active');
+                
+                // 최종 너비 계산 및 CSS에 영구 저장
+                const deltaX = e.clientX - startX;
+                const finalWidth = Math.max(50, startWidth + deltaX);
+                this.updateColumnWidthInCSS(columnIndex + 1, finalWidth);
+                
+                // 이벤트 리스너 제거
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+                
+                // 스타일 복원
+                document.body.style.userSelect = '';
+                document.body.style.cursor = '';
+            };
+        });
+    }
+
+    // 실시간 컬럼 너비 조정 (드래그 중)
+    resizeColumnRealTime(columnIndex, newWidth) {
+        const table = document.getElementById('scheduleTable');
+        if (!table) return;
+
+        // 모든 해당 컬럼의 셀들에 새 너비 적용 (더 강력한 스타일 적용)
+        const headers = table.querySelectorAll(`thead th:nth-child(${columnIndex + 1})`);
+        const cells = table.querySelectorAll(`tbody td:nth-child(${columnIndex + 1})`);
+        
+        [...headers, ...cells].forEach(cell => {
+            // 인라인 스타일로 강제 적용
+            cell.style.setProperty('width', newWidth + 'px', 'important');
+            cell.style.setProperty('min-width', newWidth + 'px', 'important');
+            cell.style.setProperty('max-width', newWidth + 'px', 'important');
+            
+            // 추가적인 강제 적용 방법
+            cell.setAttribute('style', cell.getAttribute('style') + `; width: ${newWidth}px !important; min-width: ${newWidth}px !important; max-width: ${newWidth}px !important;`);
+        });
+        
+        // 디버깅을 위한 실제 적용 확인
+        const firstHeader = headers[0];
+        if (firstHeader) {
+            const computedStyle = window.getComputedStyle(firstHeader);
+            console.log(`실시간 리사이징 - 설정: ${newWidth}px, 실제 적용: ${computedStyle.width}`);
+        }
+    }
+
+    // 컬럼 너비 조정 (최종 저장용)
+    resizeColumn(columnIndex, newWidth) {
+        this.resizeColumnRealTime(columnIndex, newWidth);
+        // CSS 규칙도 업데이트 (영구적으로 저장하기 위해)
+        this.updateColumnWidthInCSS(columnIndex + 1, newWidth);
+    }
+
+    // CSS 규칙 업데이트 (컬럼 너비를 영구적으로 저장)
+    updateColumnWidthInCSS(columnIndex, newWidth) {
+        // 동적으로 CSS 규칙 생성 또는 업데이트
+        let styleSheet = document.getElementById('dynamic-column-styles');
+        if (!styleSheet) {
+            styleSheet = document.createElement('style');
+            styleSheet.id = 'dynamic-column-styles';
+            document.head.appendChild(styleSheet);
+        }
+
+        // 기존 규칙 찾기 및 제거 (모든 관련 규칙 제거)
+        const rules = Array.from(styleSheet.sheet.cssRules);
+        for (let i = rules.length - 1; i >= 0; i--) {
+            const rule = rules[i];
+            if (rule.selectorText && rule.selectorText.includes(`:nth-child(${columnIndex})`)) {
+                try {
+                    styleSheet.sheet.deleteRule(i);
+                } catch (e) {
+                    console.warn('CSS 규칙 삭제 실패:', e);
+                }
+            }
+        }
+
+        // 더 강력한 CSS 규칙 추가 (여러 선택자로 강제 적용)
+        const newRules = [
+            `#scheduleTable th:nth-child(${columnIndex}), #scheduleTable td:nth-child(${columnIndex}) { 
+                width: ${newWidth}px !important; 
+                min-width: ${newWidth}px !important; 
+                max-width: ${newWidth}px !important;
+            }`,
+            `table th:nth-child(${columnIndex}), table td:nth-child(${columnIndex}) { 
+                width: ${newWidth}px !important; 
+                min-width: ${newWidth}px !important; 
+                max-width: ${newWidth}px !important;
+            }`
+        ];
+
+        newRules.forEach(rule => {
+            try {
+                styleSheet.sheet.insertRule(rule, styleSheet.sheet.cssRules.length);
+            } catch (e) {
+                console.warn('CSS 규칙 삽입 실패:', e, rule);
+            }
+        });
+        
+        // 실제 적용 확인
+        const testElement = document.querySelector(`#scheduleTable th:nth-child(${columnIndex})`);
+        if (testElement) {
+            const computedWidth = window.getComputedStyle(testElement).width;
+            console.log(`컬럼 ${columnIndex} 너비가 ${newWidth}px로 업데이트되었습니다. (실제 적용: ${computedWidth})`);
+        } else {
+            console.log(`컬럼 ${columnIndex} 너비가 ${newWidth}px로 업데이트되었습니다.`);
+        }
+
+        // 컬럼 너비를 로컬 스토리지에 저장
+        this.saveColumnWidths();
+    }
+
+    // 컬럼 너비를 로컬 스토리지에 저장
+    saveColumnWidths() {
+        const table = document.getElementById('scheduleTable');
+        if (!table) return;
+
+        const columnWidths = {};
+        
+        // 모든 컬럼의 너비를 저장 (총 20개 컬럼)
+        for (let i = 1; i <= 20; i++) {
+            const header = table.querySelector(`thead th:nth-child(${i})`);
+            if (header) {
+                const actualWidth = header.offsetWidth;
+                
+                // 유효한 너비인지 확인 (50px ~ 1000px 범위)
+                if (actualWidth >= 50 && actualWidth <= 1000) {
+                    columnWidths[`column_${i}`] = actualWidth;
+                } else {
+                    console.warn(`컬럼 ${i}의 너비가 범위를 벗어남: ${actualWidth}px`);
+                }
+            }
+        }
+
+        localStorage.setItem('schedule_column_widths', JSON.stringify(columnWidths));
+        console.log('컬럼 너비가 로컬 스토리지에 저장되었습니다:', columnWidths);
+    }
+
+    // 저장된 컬럼 너비 복원
+    restoreColumnWidths() {
+        const savedWidths = localStorage.getItem('schedule_column_widths');
+        if (!savedWidths) return;
+
+        try {
+            const columnWidths = JSON.parse(savedWidths);
+            console.log('저장된 컬럼 너비 복원:', columnWidths);
+
+            // 각 컬럼의 너비 복원
+            Object.entries(columnWidths).forEach(([columnKey, width]) => {
+                const columnIndex = parseInt(columnKey.replace('column_', ''));
+                const widthValue = Number(width);
+                
+                // 유효한 너비 값인지 확인 (50px ~ 1000px 범위)
+                if (!isNaN(widthValue) && widthValue >= 50 && widthValue <= 1000 && columnIndex >= 1 && columnIndex <= 20) {
+                    console.log(`컬럼 ${columnIndex} 너비 복원: ${widthValue}px`);
+                    
+                    // CSS 규칙으로 복원
+                    this.updateColumnWidthInCSS(columnIndex, widthValue);
+                    
+                    // 직접 스타일도 적용 - 모든 헤더 행과 데이터 셀에 적용
+                    const table = document.getElementById('scheduleTable');
+                    const allHeaders = table.querySelectorAll(`thead th:nth-child(${columnIndex})`);
+                    const allCells = table.querySelectorAll(`tbody td:nth-child(${columnIndex})`);
+                    
+                    [...allHeaders, ...allCells].forEach(cell => {
+                        cell.style.setProperty('width', widthValue + 'px', 'important');
+                        cell.style.setProperty('min-width', widthValue + 'px', 'important');
+                        cell.style.setProperty('max-width', widthValue + 'px', 'important');
+                    });
+                } else {
+                    console.warn(`유효하지 않은 컬럼 너비 값: ${width} (컬럼 ${columnIndex})`);
+                }
+            });
+        } catch (error) {
+            console.error('컬럼 너비 복원 실패:', error);
+        }
+    }
+
+    // 컬럼 너비 초기화 버튼 추가 (개발/테스트용)
+    addColumnWidthResetButton() {
+        const controlsDiv = document.querySelector('.controls');
+        if (!controlsDiv) return;
+
+        const resetButton = document.createElement('button');
+        resetButton.className = 'btn btn-danger';
+        resetButton.textContent = '열너비 초기화';
+        resetButton.title = '저장된 컬럼 너비 설정을 초기화합니다';
+        
+        resetButton.addEventListener('click', () => {
+            if (confirm('저장된 컬럼 너비 설정을 초기화하시겠습니까?')) {
+                this.resetColumnWidths();
+            }
+        });
+
+        controlsDiv.appendChild(resetButton);
+    }
+
+    // 컬럼 너비 초기화
+    resetColumnWidths() {
+        // 로컬 스토리지에서 컬럼 너비 데이터 삭제
+        localStorage.removeItem('schedule_column_widths');
+        
+        // 동적 CSS 규칙 삭제
+        const styleSheet = document.getElementById('dynamic-column-styles');
+        if (styleSheet) {
+            styleSheet.remove();
+        }
+
+        // 모든 컬럼의 인라인 스타일 제거
+        const table = document.getElementById('scheduleTable');
+        if (table) {
+            const headers = table.querySelectorAll('thead th');
+            const cells = table.querySelectorAll('tbody td');
+            
+            [...headers, ...cells].forEach(cell => {
+                cell.style.removeProperty('width');
+                cell.style.removeProperty('min-width');
+                cell.style.removeProperty('max-width');
+            });
+        }
+
+        console.log('컬럼 너비가 초기화되었습니다.');
+        alert('컬럼 너비가 초기화되었습니다.');
     }
 
     addRowFromFirebase(data, firebaseId) {

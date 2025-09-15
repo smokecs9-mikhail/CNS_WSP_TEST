@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>사용자 마이그레이션 도구</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .status {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .btn.danger {
+            background-color: #dc3545;
+        }
+        .btn.danger:hover {
+            background-color: #c82333;
+        }
+        .progress {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #007bff;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .results {
+            margin-top: 30px;
+        }
+        .result-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .result-success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .result-skipped {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .result-error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .file-input {
+            margin: 20px 0;
+        }
+        .file-input input[type="file"] {
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 사용자 마이그레이션 도구</h1>
+        
+        <div class="warning">
+            <strong>⚠️ 주의사항:</strong>
+            <ul>
+                <li>이 도구는 기존 사용자들을 Firebase Auth로 마이그레이션합니다.</li>
+                <li>마이그레이션 전에 반드시 백업을 완료하세요.</li>
+                <li>마이그레이션 중에는 다른 사용자가 로그인하지 마세요.</li>
+                <li>모든 사용자는 임시 비밀번호로 설정됩니다.</li>
+            </ul>
+        </div>
+        
+        <div id="status" class="status info">
+            백업 파일을 업로드하고 마이그레이션을 시작하세요.
+        </div>
+        
+        <div class="file-input">
+            <label for="backupFile">백업 파일 선택:</label>
+            <input type="file" id="backupFile" accept=".json">
+        </div>
+        
+        <div style="text-align: center;">
+            <button id="migrateBtn" class="btn" disabled>마이그레이션 시작</button>
+            <button id="downloadReportBtn" class="btn" disabled>보고서 다운로드</button>
+            <button id="refreshBtn" class="btn">새로고침</button>
+        </div>
+        
+        <div class="progress" id="progressContainer" style="display: none;">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        
+        <div id="results" class="results" style="display: none;">
+            <h3>📊 마이그레이션 결과</h3>
+            <div id="resultItems"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        // 동적 import 사용
+        let UserMigrator = null;
+        
+        // 모듈 로드
+        import('./migrate-users.js').then(module => {
+            UserMigrator = module.UserMigrator;
+            console.log('✅ 마이그레이션 모듈이 로드되었습니다.');
+        }).catch(error => {
+            console.error('❌ 모듈 로드 실패:', error);
+        });
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            const statusDiv = document.getElementById('status');
+            const backupFileInput = document.getElementById('backupFile');
+            const migrateBtn = document.getElementById('migrateBtn');
+            const downloadReportBtn = document.getElementById('downloadReportBtn');
+            const refreshBtn = document.getElementById('refreshBtn');
+            const progressContainer = document.getElementById('progressContainer');
+            const progressBar = document.getElementById('progressBar');
+            const resultsDiv = document.getElementById('results');
+            const resultItems = document.getElementById('resultItems');
+            
+            let migrator = null;
+            let backupData = null;
+            
+            // 파일 선택 이벤트
+            backupFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            backupData = JSON.parse(e.target.result);
+                            statusDiv.textContent = `✅ 백업 파일 로드 완료: ${backupData.users.length}명의 사용자`;
+                            statusDiv.className = 'status success';
+                            migrateBtn.disabled = false;
+                        } catch (error) {
+                            statusDiv.textContent = `❌ 백업 파일 형식이 올바르지 않습니다: ${error.message}`;
+                            statusDiv.className = 'status error';
+                            migrateBtn.disabled = true;
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            });
+            
+            // 마이그레이션 버튼 클릭 이벤트
+            migrateBtn.addEventListener('click', async () => {
+                if (!backupData) {
+                    alert('백업 파일을 먼저 선택하세요.');
+                    return;
+                }
+                
+                if (!UserMigrator) {
+                    alert('마이그레이션 모듈이 아직 로드되지 않았습니다. 잠시 후 다시 시도해주세요.');
+                    return;
+                }
+                
+                if (!confirm('마이그레이션을 시작하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+                    return;
+                }
+                
+                try {
+                    migrator = new UserMigrator();
+                    migrateBtn.disabled = true;
+                    progressContainer.style.display = 'block';
+                    
+                    statusDiv.textContent = '🔄 마이그레이션을 시작합니다...';
+                    statusDiv.className = 'status info';
+                    
+                    // 진행률 업데이트
+                    const updateProgress = (current, total) => {
+                        const percentage = (current / total) * 100;
+                        progressBar.style.width = `${percentage}%`;
+                    };
+                    
+                    // 마이그레이션 실행
+                    const results = await migrator.migrateUsers(backupData);
+                    
+                    // 결과 표시
+                    displayResults(results);
+                    
+                    statusDiv.textContent = '✅ 마이그레이션이 완료되었습니다!';
+                    statusDiv.className = 'status success';
+                    downloadReportBtn.disabled = false;
+                    
+                } catch (error) {
+                    statusDiv.textContent = `❌ 마이그레이션 중 오류가 발생했습니다: ${error.message}`;
+                    statusDiv.className = 'status error';
+                    migrateBtn.disabled = false;
+                } finally {
+                    progressContainer.style.display = 'none';
+                }
+            });
+            
+            // 보고서 다운로드 버튼 클릭 이벤트
+            downloadReportBtn.addEventListener('click', () => {
+                if (migrator) {
+                    migrator.downloadMigrationReport();
+                }
+            });
+            
+            // 새로고침 버튼 클릭 이벤트
+            refreshBtn.addEventListener('click', () => {
+                location.reload();
+            });
+            
+            // 결과 표시 함수
+            function displayResults(results) {
+                const successCount = results.success.length;
+                const errorCount = results.errors.length;
+                const skippedCount = results.success.filter(r => r.status === 'skipped').length;
+                
+                resultItems.innerHTML = `
+                    <div class="result-item result-success">
+                        <span>✅ 성공: ${successCount - skippedCount}명</span>
+                    </div>
+                    <div class="result-item result-skipped">
+                        <span>⏭️ 건너뜀: ${skippedCount}명</span>
+                    </div>
+                    <div class="result-item result-error">
+                        <span>❌ 실패: ${errorCount}명</span>
+                    </div>
+                `;
+                
+                resultsDiv.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

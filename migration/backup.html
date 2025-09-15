@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>사용자 데이터 백업 도구</title>
+    <style>
+        body {
+            font-family: 'Malgun Gothic', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .status {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .stats {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .stats h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .stat-item {
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            border-left: 4px solid #007bff;
+        }
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-label {
+            font-size: 14px;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        .user-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+            background: white;
+        }
+        .user-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .user-item:last-child {
+            border-bottom: none;
+        }
+        .user-info {
+            flex: 1;
+        }
+        .user-name {
+            font-weight: bold;
+            color: #333;
+        }
+        .user-details {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 2px;
+        }
+        .user-status {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .status-approved {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status-rejected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .role-admin {
+            background-color: #e2e3e5;
+            color: #383d41;
+        }
+        .role-user {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 사용자 데이터 백업 도구</h1>
+        
+        <div id="status" class="status info">
+            백업을 시작하려면 아래 버튼을 클릭하세요.
+        </div>
+        
+        <div style="text-align: center;">
+            <button id="backupBtn" class="btn">사용자 데이터 백업 시작</button>
+            <button id="refreshBtn" class="btn">새로고침</button>
+        </div>
+        
+        <div id="stats" class="stats" style="display: none;">
+            <h3>📊 사용자 통계</h3>
+            <div id="statsGrid" class="stats-grid"></div>
+        </div>
+        
+        <div id="userList" class="user-list" style="display: none;">
+            <h3>👥 사용자 목록</h3>
+            <div id="userItems"></div>
+        </div>
+    </div>
+
+    <script type="module" src="backup-users.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const statusDiv = document.getElementById('status');
+            const backupBtn = document.getElementById('backupBtn');
+            const refreshBtn = document.getElementById('refreshBtn');
+            const statsDiv = document.getElementById('stats');
+            const userListDiv = document.getElementById('userList');
+            const statsGrid = document.getElementById('statsGrid');
+            const userItems = document.getElementById('userItems');
+            
+            let backupData = null;
+            
+            // 백업 버튼 클릭 이벤트
+            backupBtn.addEventListener('click', async () => {
+                try {
+                    statusDiv.textContent = '🔄 사용자 데이터를 백업하는 중...';
+                    statusDiv.className = 'status info';
+                    backupBtn.disabled = true;
+                    
+                    // 백업 실행
+                    backupData = await window.backupUsers();
+                    
+                    // 통계 표시
+                    displayStats(backupData.stats);
+                    
+                    // 사용자 목록 표시
+                    displayUsers(backupData.users);
+                    
+                    statusDiv.textContent = '✅ 백업이 완료되었습니다!';
+                    statusDiv.className = 'status success';
+                    backupBtn.disabled = false;
+                    
+                } catch (error) {
+                    statusDiv.textContent = `❌ 백업 중 오류가 발생했습니다: ${error.message}`;
+                    statusDiv.className = 'status error';
+                    backupBtn.disabled = false;
+                }
+            });
+            
+            // 새로고침 버튼 클릭 이벤트
+            refreshBtn.addEventListener('click', () => {
+                location.reload();
+            });
+            
+            // 통계 표시 함수
+            function displayStats(stats) {
+                statsGrid.innerHTML = `
+                    <div class="stat-item">
+                        <div class="stat-number">${stats.total}</div>
+                        <div class="stat-label">총 사용자</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">${stats.byRole.admin}</div>
+                        <div class="stat-label">관리자</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">${stats.byRole.user}</div>
+                        <div class="stat-label">일반 사용자</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">${stats.byStatus.approved}</div>
+                        <div class="stat-label">승인됨</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">${stats.byStatus.pending}</div>
+                        <div class="stat-label">승인 대기</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number">${stats.byStatus.rejected}</div>
+                        <div class="stat-label">승인 거부</div>
+                    </div>
+                `;
+                statsDiv.style.display = 'block';
+            }
+            
+            // 사용자 목록 표시 함수
+            function displayUsers(users) {
+                userItems.innerHTML = users.map(user => `
+                    <div class="user-item">
+                        <div class="user-info">
+                            <div class="user-name">${user.name}</div>
+                            <div class="user-details">ID: ${user.id} | 생성일: ${new Date(user.createdAt).toLocaleDateString()}</div>
+                        </div>
+                        <div>
+                            <span class="user-status role-${user.role}">${user.role === 'admin' ? '관리자' : '사용자'}</span>
+                            <span class="user-status status-${user.status}">${getStatusText(user.status)}</span>
+                        </div>
+                    </div>
+                `).join('');
+                userListDiv.style.display = 'block';
+            }
+            
+            // 상태 텍스트 변환
+            function getStatusText(status) {
+                const statusMap = {
+                    'approved': '승인됨',
+                    'pending': '대기중',
+                    'rejected': '거부됨'
+                };
+                return statusMap[status] || status;
+            }
+        });
+    </script>
+</body>
+</html>
