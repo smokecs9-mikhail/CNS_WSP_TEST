@@ -73,6 +73,14 @@ class ScheduleManager {
         // 컬럼 리사이징 기능 초기화
         this.initColumnResizing();
 
+        // 한글 주석: 페이지에 뒤로가기/앞으로가기(bfcache 포함)로 복귀 시 너비 복원 재실행
+        window.addEventListener('pageshow', () => {
+            try {
+                this.ensureColGroup();
+                this.restoreColumnWidths();
+            } catch (_) {}
+        });
+
         // 컬럼 너비 초기화 버튼 추가 (개발용)
         this.addColumnWidthResetButton();
     }
@@ -245,6 +253,12 @@ class ScheduleManager {
         });
         // 합계 갱신
         this.updateTotals();
+
+        // 한글 주석: 데이터가 모두 그려진 뒤 저장된 컬럼 너비 복원
+        try {
+            this.ensureColGroup();
+            this.restoreColumnWidths();
+        } catch (_) {}
     }
     
     populateRow(row, data) {
@@ -1180,6 +1194,12 @@ class ScheduleManager {
         this.rows.set(row, firebaseId);
         // 합계 갱신
         this.updateTotals();
+
+        // 한글 주석: 행이 추가된 이후에도 컬럼 너비 복원(동적 행에게도 즉시 적용)
+        try {
+            this.ensureColGroup();
+            this.restoreColumnWidths();
+        } catch (_) {}
     }
 
     collectRowData(row) {
