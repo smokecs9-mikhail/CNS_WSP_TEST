@@ -64,6 +64,11 @@ h2 {
     flex: 1 1 auto; /* 한글 주석: 남는 높이를 모두 표가 차지 */
 }
 
+/* 가로 스크롤 명시 */
+.table-container {
+    overflow-x: auto;
+}
+
 /* Firebase 경고 박스 */
 .firebase-warning {
     background-color: #fff3e0;
@@ -110,8 +115,8 @@ h2 {
 table {
     border-collapse: collapse;
     font-size: 13px;
-    table-layout: auto; /* 한글 주석: 자동 너비 조정 허용 */
-    width: max-content; /* 한글 주석: 내용에 맞게 테이블 너비 자동 조정 */
+    table-layout: fixed; /* 한글 주석: colgroup의 width를 신뢰하여 고정 배치 */
+    width: max-content; /* 한글 주석: 가로 스크롤 허용 (컨테이너 overflow-x로 스크롤) */
 }
 
 /* ===== 헤더 고정(스크롤 시 상단 고정) ===== */
@@ -145,7 +150,7 @@ table {
 
 th, td {
     border: 1px solid #000;
-    padding: 0;
+    padding: 0; /* 한글 주석: 셀 내부 여백 제거로 최소 폭 하한 방지 */
     text-align: center;
     vertical-align: middle;
     position: relative;
@@ -186,7 +191,7 @@ thead tr.pinned-row td, thead tr.pinned-row th {
     background-color: #ffffff !important;
     font-weight: bold;
     font-size: 11px;
-    min-width: 60px;
+    min-width: 40px; /* 한글 주석: 과도한 하한 제거로 리사이징이 더 작게 가능 */
     height: 30px;
     vertical-align: middle;
 }
@@ -268,11 +273,7 @@ textarea {
     min-height: 40px;
     height: 100%;
     box-sizing: border-box;
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    position: static; /* 한글 주석: 절대 위치 제거로 셀 폭에 종속 */
     padding: 6px 8px; /* 한글 주석: 좌우 패딩 추가로 텍스트 여백 확보 */
     line-height: 1.3;
     overflow: hidden; /* 한글 주석: 기본 스크롤 제거 */
@@ -317,12 +318,9 @@ th:nth-child(6) textarea, td:nth-child(6) textarea { /* 연면적 */
     padding: 6px 8px;
     margin: 0;
     font-size: 13px;
-    box-sizing: border-box;
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    box-sizing: border-box; /* 한글 주석: 내부 패딩 포함하여 100%로 계산 */
+    position: static; /* 한글 주석: 절대 위치 해제하여 셀 폭과 정확히 일치 */
+    width: 100% !important;
     line-height: 1.2;
     word-wrap: break-word;
     white-space: pre-wrap;
@@ -337,7 +335,15 @@ th:nth-child(2), td:nth-child(2) { width: 200px; } /* 건물명 */
 th:nth-child(3), td:nth-child(3) { width: 300px; } /* 주소 */
 th:nth-child(4), td:nth-child(4) { width: 120px; } /* 규모 */
 th:nth-child(5), td:nth-child(5) { width: 150px; } /* 준공일 */
-th:nth-child(6), td:nth-child(6) { width: 80px; } /* 연면적 */
+th:nth-child(6), td:nth-child(6) {
+    width: 80px; /* 연면적 */
+    padding-left: 0; /* 한글 주석: 셀 패딩이 실제 폭에 더해지지 않도록 조정 */
+    padding-right: 0;
+    box-sizing: border-box;
+    min-width: 0 !important; /* 한글 주석: 200px로 고정되는 하한 제거 */
+    max-width: none !important;
+    overflow: hidden; /* 한글 주석: 내용이 넘칠 경우 잘라서 폭 유지 */
+}
 th:nth-child(7), td:nth-child(7) { width: 160px; text-align: center; } /* 1-1 */
 th:nth-child(8), td:nth-child(8) { width: 160px; text-align: center; } /* 1-2 */
 th:nth-child(9), td:nth-child(9) { width: 160px; text-align: center; } /* 1-3 */
@@ -502,25 +508,59 @@ input[type="checkbox"] {
     position: absolute;
     top: 0;
     right: -3px;
-    width: 6px;
+    width: 8px;
     height: 100%;
     background-color: transparent;
     cursor: col-resize;
-    z-index: 10;
+    z-index: 150;
     user-select: none;
+    border-radius: 2px;
+    pointer-events: auto;
 }
 
 .column-resize-handle:hover {
-    background-color: #007bff;
+    background-color: #007bff !important;
+    opacity: 0.8;
 }
 
 .column-resize-handle.active {
     background-color: #007bff;
 }
 
+/* 1-1부터 3-3까지 컬럼의 리사이징 핸들 특별 처리 */
+.sub-header .column-resize-handle,
+.column-resize-handle.sub-header-handle {
+    z-index: 200 !important;
+    background-color: transparent !important; /* 기본은 보이지 않음 */
+    width: 10px !important;
+    right: -5px !important;
+}
+
+.sub-header .column-resize-handle:hover,
+.column-resize-handle.sub-header-handle:hover {
+    background-color: #007bff !important; /* hover시에만 표시 */
+    opacity: 1 !important;
+}
+
+/* 마지막 두 컬럼(담당자 19, 비고 20) 핸들 보이도록 별도 보정 */
+#scheduleTable thead tr.main-header th:nth-child(8) .column-resize-handle, /* 담당자 */
+#scheduleTable thead tr.main-header th:nth-child(9) .column-resize-handle { /* 비고 */
+    right: 0 !important; /* 테이블 가장자리에서 안쪽으로 붙임 */
+    width: 12px !important; /* 클릭 영역 확대 */
+    z-index: 300 !important; /* 스크롤바/다른 요소 위에 */
+}
+
 /* 테이블 헤더에 리사이징 핸들 추가 */
 th {
     position: relative;
+}
+
+/* 임시 강제 테스트: 6열을 100px로 고정하여 하한 원인 진단 */
+#scheduleTable thead tr.main-header th:nth-child(6),
+#scheduleTable tbody td:nth-child(6) {
+    width: 100px !important;
+    min-width: 0 !important;
+    max-width: none !important;
 }
 
 /* 컨텍스트 메뉴 스타일 */
