@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF 편집기 - 시험진행중(서버리스)</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- PDF.js 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    
+    <!-- PDF-lib 라이브러리 (PDF 조작용) -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    
+    <!-- 커스텀 스타일 -->
+    <style>
+        /* 작업 공간 스타일 */
+        .workspace {
+            /* 헤더 높이 h-16 = 64px 기준으로 정확히 맞춤 */
+            min-height: calc(100vh - 64px);
+            background: #f8f9fa;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        
+        /* 예기치 않은 가로 스크롤 방지 */
+        html, body { overflow-x: hidden; }
+        
+        .document-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        
+        .document-header {
+            background: #f1f3f4;
+            padding: 12px 16px;
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .order-badge {
+            background: #3b82f6;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 12px;
+            min-width: 24px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        
+        .document-content {
+            padding: 16px;
+        }
+        
+        .thumbnail-container {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding: 8px 0;
+        }
+        
+        .page-thumbnail {
+            flex-shrink: 0;
+            border: 2px solid transparent;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        
+        .page-thumbnail:hover {
+            border-color: #3b82f6;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        
+        .page-thumbnail.selected {
+            border-color: #10b981;
+            background-color: #f0fdf4;
+        }
+
+        /* 드래그 중에는 hover/selected 스타일이 다른 요소에 적용되지 않도록 억제 */
+        body.dragging-page .page-thumbnail:hover {
+            border-color: transparent;
+            transform: none;
+            box-shadow: none;
+        }
+        body.dragging-page .page-thumbnail.selected:not(.dragging) {
+            border-color: transparent;
+            background-color: transparent;
+        }
+        
+        .page-thumbnail.dragging {
+            opacity: 0.5;
+            transform: rotate(5deg);
+            z-index: 1000;
+        }
+        
+        .page-thumbnail.drag-over {
+            border-color: #f59e0b;
+            background-color: #fef3c7;
+            transform: scale(1.05);
+        }
+        
+        .document-container.drag-over {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+        
+        /* 페이지 이동 위치 표시 인디케이터 */
+        .drop-indicator {
+            position: absolute;
+            width: 3px;
+            top: 8px;
+            bottom: 8px;
+            background-color: #3b82f6; /* tailwind blue-600 */
+            border-radius: 2px;
+            pointer-events: none;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+        }
+        
+        .page-thumbnail img {
+            display: block;
+            border-radius: 2px;
+        }
+        
+        /* 드래그 앤 드롭 영역 */
+        .drop-zone {
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            background: #fafafa;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            color: #666;
+            cursor: pointer;
+        }
+        
+        .drop-zone.dragover {
+            border-color: #10b981;
+            background-color: #f0fdf4;
+            color: #10b981;
+        }
+        
+        .drop-zone:hover {
+            border-color: #3b82f6;
+            background-color: #f8fafc;
+        }
+        
+        .drop-zone.compact {
+            min-height: 100px;
+            margin: 20px 0 0 0;
+        }
+        
+        /* 툴바 아이콘 */
+        .toolbar-icon {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        
+        .toolbar-icon:hover {
+            background-color: #f3f4f6;
+            transform: translateY(-1px);
+        }
+        
+        .toolbar-icon:active {
+            transform: translateY(0);
+        }
+        
+        .toolbar-icon svg {
+            width: 20px;
+            height: 20px;
+            color: #374151;
+        }
+        
+        .toolbar-icon:hover svg {
+            color: #1f2937;
+        }
+        
+        /* 툴팁 */
+        .tooltip {
+            position: absolute;
+            bottom: -35px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1f2937;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            z-index: 1000;
+        }
+        
+        .toolbar-icon:hover .tooltip {
+            opacity: 1;
+        }
+        
+        /* 컨텍스트 메뉴 */
+        .context-menu {
+            position: fixed;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            padding: 4px 0;
+            z-index: 1000;
+            min-width: 150px;
+        }
+        .context-menu .group { position: relative; }
+        .context-menu .context-submenu {
+            position: absolute;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            padding: 4px 0;
+            min-width: 220px;
+            /* 위치는 JavaScript에서 동적으로 설정 */
+        }
+        .context-menu .group:hover > .context-submenu { 
+            display: block !important; 
+            visibility: visible !important;
+        }
+        
+        .context-menu-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #374151;
+            transition: background-color 0.2s ease;
+        }
+        
+        .context-menu-item:hover {
+            background-color: #f3f4f6;
+        }
+        
+        .context-menu-item.disabled {
+            color: #9ca3af;
+            cursor: not-allowed;
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        
+        .context-menu-item.disabled:hover {
+            background-color: transparent;
+        }
+        
+        /* 로딩 애니메이션 */
+        .loading-spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #10b981;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* 스크롤바 스타일 */
+        .thumbnail-container::-webkit-scrollbar {
+            height: 6px;
+        }
+        
+        .thumbnail-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+        
+        .thumbnail-container::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+        
+        .thumbnail-container::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 헤더 -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-full mx-auto px-4">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <h1 class="text-2xl font-bold text-gray-900">📄 PDF 편집기 - 시험중(서버리스)</h1>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button id="fileAddBtn" class="toolbar-icon" title="파일 추가">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        <div class="tooltip">파일 추가</div>
+                    </button>
+                    <button id="saveBtn" class="toolbar-icon" title="저장하기" disabled>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4h10v6H7z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14h6v4H9z"/>
+                        </svg>
+                        <div class="tooltip">저장하기</div>
+                    </button>
+                    <button id="deleteBtn" class="toolbar-icon" title="페이지 삭제하기" disabled>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                        </svg>
+                        <div class="tooltip">페이지 삭제하기</div>
+                    </button>
+                    <button id="rotateLeftBtn" class="toolbar-icon" title="선택 페이지 반시계 방향 회전" disabled>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <div class="tooltip">선택 페이지 반시계 방향 회전</div>
+                    </button>
+                    <button id="rotateRightBtn" class="toolbar-icon" title="선택 페이지 시계방향 회전" disabled>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="transform: scaleX(-1);">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <div class="tooltip">선택 페이지 시계방향 회전</div>
+                    </button>
+                    <button id="moveUpBtn" class="toolbar-icon" title="파일 순서 위로" disabled>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path>
+                        </svg>
+                        <div class="tooltip">파일 순서 위로</div>
+                    </button>
+                    <button id="moveDownBtn" class="toolbar-icon" title="파일 순서 아래로" disabled>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+                        </svg>
+                        <div class="tooltip">파일 순서 아래로</div>
+                    </button>
+                    <button id="mergeAllBtn" class="toolbar-icon" title="선택 파일 순서대로 합치기" disabled>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                            <!-- 사각형 프레임 -->
+                            <rect x="4" y="6" width="16" height="12" rx="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            
+                            <!-- 왼쪽 화살표 (오른쪽으로) -->
+                            <path d="M2 12h6m0 0l-3-3m3 3l-3 3" stroke-linecap="round" stroke-linejoin="round"/>
+                            
+                            <!-- 오른쪽 화살표 (왼쪽으로) -->
+                            <path d="M22 12h-6m0 0l3-3m-3 3l3 3" stroke-linecap="round" stroke-linejoin="round"/>
+                            
+                            <!-- 위쪽 화살표 (아래로) -->
+                            <path d="M12 2v6m0 0l-3-3m3 3l3-3" stroke-linecap="round" stroke-linejoin="round"/>
+                            
+                            <!-- 아래쪽 화살표 (위로) -->
+                            <path d="M12 22v-6m0 0l-3 3m3-3l3 3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <div class="tooltip">선택 파일 순서대로 합치기</div>
+                    </button>
+                    <button id="previewBtn" class="toolbar-icon" title="파일 미리보기" disabled>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                        </svg>
+                        <div class="tooltip">파일 미리보기</div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 메인 컨텐츠 - 작업 공간 -->
+    <main class="workspace">
+        <!-- 드래그 앤 드롭 영역 -->
+        <div id="mainDropZone" class="drop-zone" 
+             ondragover="event.preventDefault(); return false;" 
+             ondrop="event.preventDefault(); return false;">
+            <div class="text-center">
+                <svg class="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                </svg>
+                <p class="text-lg font-medium">끌어다 놓기 - 편집할 문서를 여기에 가져다 놓으세요</p>
+                <p class="text-sm text-gray-500 mt-2">PDF 파일을 드래그하거나 클릭하여 업로드</p>
+            </div>
+            <input type="file" id="fileInput" accept=".pdf" multiple class="hidden">
+        </div>
+
+        <!-- 문서 컨테이너들 -->
+        <div id="documentsContainer">
+            <!-- 문서들이 여기에 동적으로 추가됩니다 -->
+        </div>
+    </main>
+
+    <!-- 로딩 오버레이 -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 flex items-center space-x-4">
+            <div class="loading-spinner"></div>
+            <span class="text-gray-700">처리 중...</span>
+        </div>
+    </div>
+
+    <!-- 컨텍스트 메뉴 -->
+    <div id="contextMenu" class="context-menu hidden">
+        <div class="context-menu-item" data-action="select-all">모두 선택</div>
+        <div class="context-menu-item" data-action="deselect-all">선택 해제</div>
+        <div class="context-menu-item" data-action="delete-pages">선택 페이지 삭제</div>
+        <div class="context-menu-item" data-action="extract-pages">선택 페이지 추출</div>
+        <div class="context-menu-item" data-action="rotate-left">반시계 방향 회전</div>
+        <div class="context-menu-item" data-action="rotate-right">시계 방향 회전</div>
+        <div class="context-menu-item" data-action="move-up">위로 이동</div>
+        <div class="context-menu-item" data-action="move-down">아래로 이동</div>
+        <div class="context-menu-item" data-action="duplicate">복사</div>
+        <div class="context-menu-item" data-action="remove-document">문서 제거</div>
+    </div>
+
+    <!-- 페이지 컨텍스트 메뉴 -->
+    <div id="pageContextMenu" class="context-menu hidden">
+        <div class="context-menu-item" data-action="page-preview">미리보기</div>
+        <div class="context-menu-item" data-action="page-delete">페이지 삭제</div>
+        <div class="context-menu-item" data-action="page-rotate-right">90도 회전</div>
+        <div class="context-menu-item" data-action="page-rotate-left">-90도 회전</div>
+        <div class="context-menu-item group" data-action="page-sub">이 페이지를...<span style="float:right; color:#9ca3af;">▶</span>
+            <div class="context-submenu hidden">
+                <div class="context-menu-item" data-action="page-move-before">여기 페이지 앞으로 이동</div>
+                <div class="context-menu-item" data-action="page-move-after">여기 페이지 뒤로 이동</div>
+                <div class="context-menu-item" data-action="page-copy-before">여기 페이지 앞으로 복사</div>
+                <div class="context-menu-item" data-action="page-copy-after">여기 페이지 뒤로 복사</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 페이지 보기 모달 -->
+    <div id="pageViewerModal" class="fixed inset-0 bg-black bg-opacity-30 z-[1000] hidden">
+        <div class="w-full h-full flex items-center justify-center">
+            <div class="w-[80vw] h-[80vh] flex flex-col bg-white rounded-lg overflow-hidden shadow-2xl relative">
+            <!-- 모달 툴바 -->
+            <div class="bg-white border-b px-3 py-2 flex items-center gap-2 select-none">
+                <!-- 페이지 정보 -->
+                <div class="flex items-center gap-1 mr-4">
+                    <input id="pvPageIndex" class="w-12 border rounded px-1 py-1 text-sm text-center" value="0" type="number" min="1" />
+                    <span class="text-sm text-gray-700">/</span>
+                    <span id="pvTotalPages" class="text-sm text-gray-700">0</span>
+                </div>
+                <!-- 확대비율 -->
+                <div class="flex items-center gap-1 mr-2">
+                    <button id="pvZoomOut" class="toolbar-icon" title="축소"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/></svg></button>
+                    <input id="pvZoomInput" class="w-16 border rounded px-2 py-1 text-sm" value="100%" />
+                    <button id="pvZoomIn" class="toolbar-icon" title="확대"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg></button>
+                </div>
+                <!-- 맞춤 보기 -->
+                <button id="pvFitWidth" class="toolbar-icon" title="좌우로 꽉차게 보기"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12h4m10 0h4M9 5h6v14H9z"/></svg></button>
+                <button id="pvFitHeight" class="toolbar-icon" title="상하로 꽉차게 보기"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v4m0 10v4M5 9h14v6H5z"/></svg></button>
+                <!-- 회전 -->
+                <button id="pvRotateRight" class="toolbar-icon" title="시계방향 90도"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 12a8 8 0 018-8h1m0 0l-2-2m2 2l-2 2"/></svg></button>
+                <button id="pvRotateLeft" class="toolbar-icon" title="반시계방향 90도"><svg style="transform: scaleY(-1);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12a8 8 0 01-8 8h-1m0 0l2 2m-2-2l2-2"/></svg></button>
+                <!-- 이대로 반영 -->
+                <button id="pvSaveAsIs" class="toolbar-icon" title="이대로 반영">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16v2a2 2 0 01-2 2H9a2 2 0 01-2-2v-2"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 10l5-5 5 5"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v6"/>
+                    </svg>
+                    <div class="tooltip">이대로 반영</div>
+                </button>
+                <!-- 닫기 (오른쪽 끝) -->
+                <button id="pvCloseBtn" class="toolbar-icon ml-auto" title="닫기">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <!-- 캔버스 영역 -->
+            <div id="pvCanvasWrap" class="flex-1 overflow-auto bg-gray-900 flex items-center justify-center cursor-grab">
+                <canvas id="pvCanvas" class="bg-white shadow-xl"></canvas>
+            </div>
+            <!-- 좌우 이동 버튼 -->
+            <button id="pvPrevBtn" class="absolute left-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full shadow p-2" title="이전 페이지">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <button id="pvNextBtn" class="absolute right-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full shadow p-2" title="다음 페이지">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 변경 저장 확인 모달 -->
+    <div id="confirmModal" class="fixed inset-0 bg-black bg-opacity-40 z-[1100] hidden">
+        <div class="w-full h-full flex items-center justify-center">
+            <div class="w-[420px] bg-white rounded-lg shadow-2xl overflow-hidden">
+                <div class="px-5 py-4 border-b">
+                    <h3 class="text-lg font-semibold">변경 사항 저장</h3>
+                </div>
+                <div class="px-5 py-4 text-sm text-gray-700">
+                    변경 사항을 저장하시겠습니까?
+                </div>
+                <div class="px-5 py-3 bg-gray-50 border-t flex justify-end gap-2">
+                    <button id="confirmNo" class="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300">아니오</button>
+                    <button id="confirmYes" class="px-4 py-2 rounded bg-green-600 hover:bg-green-700 text-white">예</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 알림 메시지 -->
+    <div id="notification" class="fixed top-4 left-1/2 -translate-x-1/2 transform z-50 hidden">
+        <div class="bg-white border-l-4 border-green-500 p-4 rounded-lg shadow-lg">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <p id="notificationMessage" class="text-sm font-medium text-gray-900"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript 파일들 -->
+    <script src="js/pdf-viewer.js"></script>
+    <script src="js/pdf-editor.js"></script>
+    <script src="js/pdf-merger.js"></script>
+    <script src="js/pdf-compressor.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const welcomeMessage = document.getElementById('welcomeMessage');
     const contentFrame = document.getElementById('contentFrame');
     const workScheduleMenu = document.getElementById('workScheduleMenu');
+    const pdfEditorMenu = document.getElementById('pdfEditorMenu');
     
     // 모바일 메뉴 관련 요소들
     const mobileMenuToggle = document.getElementById('mobileMenuToggle');
@@ -40,6 +41,14 @@ document.addEventListener('DOMContentLoaded', function() {
         workScheduleMenu.addEventListener('click', function(e) {
             e.preventDefault();
             loadWorkSchedule();
+        });
+    }
+
+    // PDF편집기 메뉴 클릭 이벤트
+    if (pdfEditorMenu) {
+        pdfEditorMenu.addEventListener('click', function(e) {
+            e.preventDefault();
+            loadPdfEditor();
         });
     }
 
@@ -133,6 +142,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // 메뉴 활성화 상태 업데이트
         updateMenuActiveState(workScheduleMenu);
+    }
+
+    // PDF편집기 로드 함수
+    function loadPdfEditor() {
+        // 웰컴 메시지 숨기기
+        welcomeMessage.style.display = 'none';
+
+        // iframe에 PDF_Editor/PDFeditor.html 로드
+        contentFrame.src = 'PDF_Editor/PDFeditor.html';
+        contentFrame.style.display = 'block';
+
+        // 메뉴 활성화 상태 업데이트
+        updateMenuActiveState(pdfEditorMenu);
     }
 
     // 메뉴 활성화 상태 업데이트 함수
