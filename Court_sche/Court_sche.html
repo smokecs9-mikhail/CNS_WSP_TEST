@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>소송일정표 - 시험진행중(서버리스)</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>소송일정표 - 시험중(서버리스)</h1>
+            <div class="nav-buttons">
+                <button class="nav-btn" onclick="previousMonth()">◀ 이전</button>
+                <button class="nav-btn" onclick="goToToday()">오늘</button>
+                <button class="nav-btn" onclick="nextMonth()">다음 ▶</button>
+                <button class="add-event-btn" onclick="openAddEventModal()">+ 일정 추가</button>
+            </div>
+        </div>
+
+        <div class="calendar-container">
+            <div class="calendar-header">
+                <div class="month-year" id="monthYear"></div>
+            </div>
+            
+            <div class="weekdays">
+                <div class="weekday">일</div>
+                <div class="weekday">월</div>
+                <div class="weekday">화</div>
+                <div class="weekday">수</div>
+                <div class="weekday">목</div>
+                <div class="weekday">금</div>
+                <div class="weekday">토</div>
+            </div>
+            
+            <div class="calendar-grid" id="calendarGrid"></div>
+        </div>
+    </div>
+
+    <!-- 일정 추가/수정 모달 -->
+    <div id="eventModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modalTitle">일정 추가</h2>
+            <form id="eventForm">
+                <div class="form-group">
+                    <label for="eventTitle">제목</label>
+                    <input type="text" id="eventTitle" required>
+                </div>
+                <div class="form-group">
+                    <label for="eventDate">날짜</label>
+                    <input type="date" id="eventDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="eventTime">시간</label>
+                    <input type="time" id="eventTime">
+                </div>
+                <div class="form-group">
+                    <label for="eventDescription">설명</label>
+                    <textarea id="eventDescription" placeholder="일정에 대한 설명을 입력하세요..."></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">취소</button>
+                    <button type="button" class="btn btn-danger" id="deleteBtn" onclick="deleteEvent()" style="display: none;">삭제</button>
+                    <button type="submit" class="btn btn-primary" id="saveBtn">저장</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

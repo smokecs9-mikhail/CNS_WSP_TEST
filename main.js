@@ -136,8 +136,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // 웰컴 메시지 숨기기
         welcomeMessage.style.display = 'none';
 
-        // iframe에 WSD/wsd.html 로드
-        contentFrame.src = 'WSD/wsd.html';
+        // iframe에 Court_sche/Court_sche.html 로드
+        contentFrame.src = 'Court_sche/Court_sche.html';
         contentFrame.style.display = 'block';
 
         // 메뉴 활성화 상태 업데이트
