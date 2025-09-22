@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', function() {
         welcomeMessage.style.display = 'none';
         
         // iframe에 sche.html 로드
-        contentFrame.src = 'sche/sche.html';
+        contentFrame.src = 'Sales_sche/Salse_sche.html';
         contentFrame.style.display = 'block';
         
         // 메뉴 활성화 상태 업데이트
