@@ -17,7 +17,7 @@ class PDFEditor {
      */
     async deletePages(pdfDoc, pageNumbers, originalData = null) {
         try {
-            // PDF.js 문서를 PDF-lib 문서로 변환
+            // PDF.js 문서를 PDF-lib 문서로 변환 (originalData 우선 사용)
             const pdfBytes = await this.convertPdfJsToPdfLib(pdfDoc, originalData);
             const pdfDocLib = await this.pdfLib.PDFDocument.load(pdfBytes);
             
@@ -52,7 +52,7 @@ class PDFEditor {
      */
     async extractPages(pdfDoc, pageNumbers, originalData = null) {
         try {
-            // PDF.js 문서를 PDF-lib 문서로 변환
+            // PDF.js 문서를 PDF-lib 문서로 변환 (originalData 우선 사용)
             const pdfBytes = await this.convertPdfJsToPdfLib(pdfDoc, originalData);
             const sourcePdf = await this.pdfLib.PDFDocument.load(pdfBytes);
             
@@ -84,12 +84,13 @@ class PDFEditor {
      * PDF를 다운로드합니다.
      * @param {Object} pdfDoc - PDF 문서 객체
      * @param {string} filename - 다운로드할 파일명 (기본값: 'edited.pdf')
+     * @param {ArrayBuffer} originalData - 원본 PDF 데이터 (선택사항)
      * @returns {Promise<void>}
      */
-    async downloadPdf(pdfDoc, filename = 'edited.pdf') {
+    async downloadPdf(pdfDoc, filename = 'edited.pdf', originalData = null) {
         try {
-            // PDF.js 문서를 PDF-lib 문서로 변환
-            const pdfBytes = await this.convertPdfJsToPdfLib(pdfDoc);
+            // PDF.js 문서를 PDF-lib 문서로 변환 (originalData 우선 사용)
+            const pdfBytes = await this.convertPdfJsToPdfLib(pdfDoc, originalData);
             
             // Blob 생성 및 다운로드
             const blob = new Blob([pdfBytes], { type: 'application/pdf' });
@@ -141,48 +142,47 @@ class PDFEditor {
         }
     }
 
-    /**
-     * PDF를 다운로드합니다 (새로운 UI용).
-     * @param {Object} pdfDoc - PDF.js 문서 객체
-     * @param {string} filename - 다운로드할 파일명
-     * @returns {Promise<void>}
-     */
-    async downloadPdf(pdfDoc, filename = 'document.pdf') {
-        try {
-            const pdfBytes = await this.convertPdfJsToPdfLib(pdfDoc);
-            await this.downloadModifiedPdf(pdfBytes, filename);
-        } catch (error) {
-            console.error('PDF 다운로드 오류:', error);
-            throw new Error('PDF 다운로드 중 오류가 발생했습니다.');
-        }
-    }
 
     /**
-     * PDF.js 문서를 PDF-lib 문서로 변환합니다.
+     * PDF.js 문서를 PDF-lib 문서로 변환합니다 (byte-preserving 방식).
      * @param {Object} pdfJsDoc - PDF.js 문서 객체
      * @param {ArrayBuffer} originalData - 원본 PDF 데이터 (선택사항)
      * @returns {Promise<Uint8Array>} PDF 바이트 배열
      */
     async convertPdfJsToPdfLib(pdfJsDoc, originalData = null) {
         try {
-            // 원본 데이터가 있고 유효한 경우에만 사용
+            // 원본 데이터가 있고 유효한 경우 우선 사용 (byte-preserving)
             if (originalData && !this.isArrayBufferDetached(originalData)) {
                 try {
+                    // 원본 바이트 데이터를 직접 반환하여 벡터/텍스트 데이터 보존
+                    console.log('원본 PDF 데이터 사용 (byte-preserving)');
                     return new Uint8Array(originalData);
                 } catch (error) {
-                    console.warn('원본 데이터 사용 실패, 이미지 변환으로 대체:', error);
+                    console.warn('원본 데이터 사용 실패, pdf-lib로 재생성:', error);
                 }
             }
             
-            // 이미지로 변환하여 새 PDF 생성
+            // 원본 데이터가 없거나 사용할 수 없는 경우 pdf-lib로 재생성
+            // 이 경우에도 이미지 변환보다는 원본 구조를 최대한 보존
+            try {
+                // PDF.js에서 원본 바이트 데이터 추출 시도
+                const loadingTask = pdfJsDoc.loadingTask;
+                if (loadingTask && loadingTask.source && loadingTask.source.data) {
+                    console.log('PDF.js 원본 데이터 사용');
+                    return new Uint8Array(loadingTask.source.data);
+                }
+            } catch (error) {
+                console.warn('PDF.js 원본 데이터 추출 실패:', error);
+            }
+            
+            // 최후의 수단: 이미지 변환 (파일 크기 증가 및 품질 저하)
+            console.warn('이미지 변환 모드 사용 - 파일 크기가 증가할 수 있습니다');
             const newPdf = await this.pdfLib.PDFDocument.create();
             
-            // 모든 페이지를 새 PDF에 복사
             for (let i = 1; i <= pdfJsDoc.numPages; i++) {
                 const page = await pdfJsDoc.getPage(i);
                 const viewport = page.getViewport({ scale: 1.0 });
                 
-                // 캔버스에 페이지 렌더링
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
                 canvas.height = viewport.height;
@@ -195,7 +195,6 @@ class PDFEditor {
                 
                 await page.render(renderContext).promise;
                 
-                // 캔버스를 이미지로 변환하여 PDF에 추가
                 const imageData = canvas.toDataURL('image/png');
                 const image = await newPdf.embedPng(imageData);
                 const newPage = newPdf.addPage([viewport.width, viewport.height]);
@@ -354,3 +353,4 @@ class PDFEditor {
 
 // 전역 PDF 편집기 인스턴스 생성
 window.pdfEditor = new PDFEditor();
+

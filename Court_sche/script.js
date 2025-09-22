@@ -2,6 +2,8 @@
 let currentDate = new Date();
 let events = JSON.parse(localStorage.getItem('calendarEvents')) || [];
 let editingEventId = null;
+let viewingEventId = null; // 일정보기에서 사용
+let pendingCloseTarget = null; // 어떤 모달을 닫으려는지 임시 저장
 
 const monthNames = [
     '1월', '2월', '3월', '4월', '5월', '6월',
@@ -65,7 +67,7 @@ function renderCalendar() {
             eventElement.textContent = event.title;
             eventElement.onclick = (e) => {
                 e.stopPropagation();
-                editEvent(event);
+                openViewEventModal(event);
             };
             dayElement.appendChild(eventElement);
         });
@@ -115,6 +117,11 @@ function editEvent(event) {
     document.getElementById('eventDate').value = event.date;
     document.getElementById('eventTime').value = event.time || '';
     document.getElementById('eventDescription').value = event.description || '';
+    // 유형 드롭다운에 기존 값 반영 (없으면 기본 공백)
+    const typeSelect = document.getElementById('eventType');
+    if (typeSelect) {
+        typeSelect.value = event.type || typeSelect.options[0]?.value || '';
+    }
     document.getElementById('deleteBtn').style.display = 'inline-block';
     document.getElementById('saveBtn').textContent = '수정';
     
@@ -127,6 +134,44 @@ function closeModal() {
     editingEventId = null;
 }
 
+// 일정보기 모달 열기
+function openViewEventModal(event) {
+    viewingEventId = event.id;
+    document.getElementById('viewTitle').textContent = event.title || '';
+    document.getElementById('viewType').textContent = event.type || '';
+    document.getElementById('viewDate').textContent = event.date || '';
+    document.getElementById('viewTime').textContent = event.time || '';
+    document.getElementById('viewDescription').textContent = event.description || '';
+    document.getElementById('viewAuthor').textContent = event.authorName || '';
+    document.getElementById('viewCreatedAt').textContent = formatDateTime(event.createdAt) || '';
+    document.getElementById('viewUpdatedAt').textContent = formatDateTime(event.updatedAt) || '';
+    renderCommentsTable(event);
+    document.getElementById('viewModal').style.display = 'block';
+
+    // 작성자 여부에 따라 수정/삭제 버튼 노출 제어
+    const currentUserName = sessionStorage.getItem('userName') || '';
+    const isOwner = (event.authorName || '') === currentUserName;
+    const editBtn = document.getElementById('viewEditBtn');
+    const deleteBtn = document.getElementById('viewDeleteBtn');
+    if (editBtn) editBtn.style.display = isOwner ? 'inline-block' : 'none';
+    if (deleteBtn) deleteBtn.style.display = isOwner ? 'inline-block' : 'none';
+}
+
+// 일정보기 모달 닫기
+function closeViewModal() {
+    document.getElementById('viewModal').style.display = 'none';
+    viewingEventId = null;
+}
+
+// 보기에서 수정 버튼 클릭 -> 수정 모달로 이동
+function openEditFromView() {
+    if (!viewingEventId) return;
+    const found = events.find(ev => ev.id === viewingEventId);
+    if (!found) return;
+    closeViewModal();
+    editEvent(found);
+}
+
 // 일정 삭제
 function deleteEvent() {
     if (editingEventId && confirm('이 일정을 삭제하시겠습니까?')) {
@@ -134,6 +179,13 @@ function deleteEvent() {
         saveEvents();
         renderCalendar();
         closeModal();
+    }
+    // 보기 모달에서 삭제 지원
+    if (viewingEventId && confirm('이 일정을 삭제하시겠습니까?')) {
+        events = events.filter(event => event.id !== viewingEventId);
+        saveEvents();
+        renderCalendar();
+        closeViewModal();
     }
 }
 
@@ -145,6 +197,8 @@ document.getElementById('eventForm').addEventListener('submit', function(e) {
     const date = document.getElementById('eventDate').value;
     const time = document.getElementById('eventTime').value;
     const description = document.getElementById('eventDescription').value;
+    const typeSelect = document.getElementById('eventType');
+    const eventType = typeSelect ? typeSelect.value : '';
     
     if (editingEventId) {
         // 수정
@@ -155,17 +209,35 @@ document.getElementById('eventForm').addEventListener('submit', function(e) {
                 title,
                 date,
                 time,
-                description
+                description,
+                // 유형 갱신 (선택값이 있을 때만 반영)
+                type: eventType || events[eventIndex].type,
+                // 작성자 이름은 최초 생성 시 저장된 값을 유지
+                authorName: events[eventIndex].authorName || null,
+                // 수정일시 갱신
+                updatedAt: new Date().toISOString()
             };
         }
     } else {
         // 추가
+        // 작성자 이름 가져오기 (사용자에게는 표시하지 않음)
+        // - 인증 로직에서 sessionStorage.setItem('userName', ...) 저장해둔 값을 활용
+        const authorName = sessionStorage.getItem('userName') || null; // 값이 없으면 null 저장
         const newEvent = {
             id: generateId(),
             title,
             date,
             time,
-            description
+            description,
+            // 유형 저장
+            type: eventType,
+            // 작성자 이름 저장 (비표시용 메타 데이터)
+            authorName,
+            // 작성/수정 일시 저장
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            // 의견 리스트 초기화
+            comments: []
         };
         events.push(newEvent);
     }
@@ -178,10 +250,173 @@ document.getElementById('eventForm').addEventListener('submit', function(e) {
 // 모달 외부 클릭 시 닫기
 window.onclick = function(event) {
     const modal = document.getElementById('eventModal');
+    const viewModal = document.getElementById('viewModal');
+    const addCommentModal = document.getElementById('addCommentModal');
     if (event.target === modal) {
-        closeModal();
+        // 작성 중 외부 클릭 시 확인 모달 표시
+        pendingCloseTarget = 'event';
+        openConfirmCancel();
+    }
+    if (event.target === viewModal) {
+        closeViewModal();
+    }
+    if (event.target === addCommentModal) {
+        closeAddCommentModal();
     }
 }
 
 // 초기 렌더링
 renderCalendar();
+
+// 날짜/시간 표기 보조 함수
+function formatDateTime(iso) {
+    if (!iso) return '';
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mi = String(d.getMinutes()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+    } catch (e) {
+        return '';
+    }
+}
+
+// 보기 모달에서 의견 추가 (모달 기반)
+function addCommentFromView() { openAddCommentModal(); }
+
+// 의견 작성 모달 열기/닫기
+function openAddCommentModal() {
+    const textarea = document.getElementById('addCommentText');
+    if (textarea) textarea.value = '';
+    document.getElementById('addCommentModal').style.display = 'block';
+}
+
+function closeAddCommentModal() {
+    document.getElementById('addCommentModal').style.display = 'none';
+}
+
+// 의견 작성 모달 저장
+function saveCommentFromModal() {
+    if (!viewingEventId) return;
+    const textarea = document.getElementById('addCommentText');
+    const text = textarea ? textarea.value.trim() : '';
+    if (!text) return;
+    const idx = events.findIndex(ev => ev.id === viewingEventId);
+    if (idx === -1) return;
+    const commenter = sessionStorage.getItem('userName') || '익명';
+    const comment = { text, commenter, createdAt: new Date().toISOString() };
+    const prev = Array.isArray(events[idx].comments) ? events[idx].comments : [];
+    events[idx].comments = [...prev, comment];
+    events[idx].updatedAt = new Date().toISOString();
+    saveEvents();
+    // 테이블 갱신 및 모달 닫기
+    const found = events.find(ev => ev.id === viewingEventId);
+    if (found) renderCommentsTable(found);
+    closeAddCommentModal();
+}
+
+// 의견 테이블 렌더링
+function renderCommentsTable(event) {
+    const tbody = document.getElementById('viewCommentsBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    const list = Array.isArray(event.comments) ? event.comments : [];
+    list.forEach((c, idx) => {
+        const tr = document.createElement('tr');
+        const tdIdx = document.createElement('td');
+        tdIdx.textContent = String(idx + 1);
+        const tdAuthor = document.createElement('td');
+        tdAuthor.textContent = c.commenter || '';
+        const tdDate = document.createElement('td');
+        tdDate.textContent = formatDateTime(c.createdAt) || '';
+        const tdText = document.createElement('td');
+        tdText.textContent = c.text || '';
+        tdText.className = 'comment-text';
+        // 클릭 시 전체 의견 팝업
+        tdText.onclick = () => openCommentPopup({
+            text: c.text || '',
+            index: idx + 1,
+            author: c.commenter || '',
+            date: formatDateTime(c.createdAt) || ''
+        });
+        tr.appendChild(tdIdx);
+        tr.appendChild(tdAuthor);
+        tr.appendChild(tdDate);
+        tr.appendChild(tdText);
+        tbody.appendChild(tr);
+    });
+}
+
+// 의견 전체보기 팝업 열기/닫기
+let commentPopupContext = { eventId: null, commentIndex: null, commentAuthor: null };
+function openCommentPopup({ text, index, author, date }) {
+    const el = document.getElementById('commentFullText');
+    if (el) el.textContent = text;
+    const idxEl = document.getElementById('commentIndex');
+    const authorEl = document.getElementById('commentAuthor');
+    const dateEl = document.getElementById('commentDate');
+    if (idxEl) idxEl.textContent = `#${index}`; // 숫자 표기는 타이틀과 동일 폰트/사이즈
+    if (authorEl) authorEl.textContent = author;
+    if (dateEl) dateEl.textContent = date;
+    // 삭제 버튼 노출 조건: 현재 사용자 == 의견 작성자
+    const currentUserName = sessionStorage.getItem('userName') || '';
+    const canDelete = currentUserName && author && currentUserName === author;
+    const deleteBtn = document.getElementById('commentDeleteBtn');
+    if (deleteBtn) deleteBtn.style.display = canDelete ? 'inline-block' : 'none';
+    // 컨텍스트 저장 (삭제 시 사용)
+    commentPopupContext = { eventId: viewingEventId, commentIndex: index - 1, commentAuthor: author };
+    document.getElementById('commentModal').style.display = 'block';
+}
+
+function closeCommentPopup() {
+    document.getElementById('commentModal').style.display = 'none';
+}
+
+// 의견 삭제 (작성자 본인만 가능)
+function deleteCommentFromPopup() {
+    const { eventId, commentIndex, commentAuthor } = commentPopupContext || {};
+    if (eventId == null || commentIndex == null) return;
+    const currentUserName = sessionStorage.getItem('userName') || '';
+    if (!currentUserName || currentUserName !== commentAuthor) return;
+    const idx = events.findIndex(ev => ev.id === eventId);
+    if (idx === -1) return;
+    const list = Array.isArray(events[idx].comments) ? events[idx].comments : [];
+    if (commentIndex < 0 || commentIndex >= list.length) return;
+    if (!confirm('이 의견을 삭제하시겠습니까?')) return;
+    list.splice(commentIndex, 1);
+    events[idx].comments = list;
+    events[idx].updatedAt = new Date().toISOString();
+    saveEvents();
+    // 테이블 갱신 및 팝업 닫기
+    const found = events[idx];
+    renderCommentsTable(found);
+    closeCommentPopup();
+}
+
+// 작성 취소 확인 모달 제어
+function openConfirmCancel() {
+    document.getElementById('confirmCancelModal').style.display = 'block';
+}
+
+function closeConfirmCancel() {
+    document.getElementById('confirmCancelModal').style.display = 'none';
+}
+
+function confirmCancelYes() {
+    // 예를 누르면 해당 대상 모달 닫기
+    if (pendingCloseTarget === 'event') {
+        closeModal();
+    }
+    pendingCloseTarget = null;
+    closeConfirmCancel();
+}
+
+function confirmCancelNo() {
+    // 아니오를 누르면 아무것도 닫지 않음
+    pendingCloseTarget = null;
+    closeConfirmCancel();
+}

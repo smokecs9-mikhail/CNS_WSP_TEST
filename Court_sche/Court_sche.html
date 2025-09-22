@@ -11,9 +11,9 @@
         <div class="header">
             <h1>소송일정표 - 시험중(서버리스)</h1>
             <div class="nav-buttons">
-                <button class="nav-btn" onclick="previousMonth()">◀ 이전</button>
+                <button class="nav-btn" onclick="previousMonth()">◀ 이전달</button>
                 <button class="nav-btn" onclick="goToToday()">오늘</button>
-                <button class="nav-btn" onclick="nextMonth()">다음 ▶</button>
+                <button class="nav-btn" onclick="nextMonth()">다음달 ▶</button>
                 <button class="add-event-btn" onclick="openAddEventModal()">+ 일정 추가</button>
             </div>
         </div>
@@ -47,6 +47,15 @@
                     <label for="eventTitle">제목</label>
                     <input type="text" id="eventTitle" required>
                 </div>
+                <!-- 일정입력란: 유형 드롭다운 -->
+                <div class="form-group">
+                    <label for="eventType">유형</label>
+                    <select id="eventType">
+                        <option value="재판">재판</option>
+                        <option value="판결">판결</option>
+                        <option value="기타">기타</option>
+                    </select>
+                </div>
                 <div class="form-group">
                     <label for="eventDate">날짜</label>
                     <input type="date" id="eventDate" required>
@@ -65,6 +74,125 @@
                     <button type="submit" class="btn btn-primary" id="saveBtn">저장</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- 일정보기 모달 (읽기 전용 요약) -->
+    <div id="viewModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeViewModal()">&times;</span>
+            <h2>일정보기</h2>
+            <!-- 보기 레이아웃: 제목/유형 한 행, 날짜/시간 한 행 -->
+            <div class="view-row view-row-2">
+                <div class="view-field">
+                    <label>제목</label>
+                    <div id="viewTitle" class="view-value"></div>
+                </div>
+                <div class="view-field">
+                    <label>유형</label>
+                    <div id="viewType" class="view-value"></div>
+                </div>
+            </div>
+            <div class="view-row view-row-2">
+                <div class="view-field">
+                    <label>날짜</label>
+                    <div id="viewDate" class="view-value"></div>
+                </div>
+                <div class="view-field">
+                    <label>시간</label>
+                    <div id="viewTime" class="view-value"></div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>설명</label>
+                <div id="viewDescription" class="view-value"></div>
+            </div>
+            <!-- 보기 레이아웃: 작성자/작성일자/수정일자 한 행 -->
+            <div class="view-row view-row-3">
+                <div class="view-field">
+                    <label>작성자</label>
+                    <div id="viewAuthor" class="view-value"></div>
+                </div>
+                <div class="view-field">
+                    <label>작성일자</label>
+                    <div id="viewCreatedAt" class="view-value"></div>
+                </div>
+                <div class="view-field">
+                    <label>수정일자</label>
+                    <div id="viewUpdatedAt" class="view-value"></div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>의견</label>
+                <div>
+                    <table class="comments-table" id="viewCommentsTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 60px;">순번</th>
+                                <th style="width: 120px;">작성자</th>
+                                <th style="width: 160px;">작성일자</th>
+                                <th>의견</th>
+                            </tr>
+                        </thead>
+                        <tbody id="viewCommentsBody">
+                            <!-- 의견 목록이 동적으로 렌더링됩니다 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-primary" id="viewEditBtn" onclick="openEditFromView()">수정</button>
+                <button type="button" class="btn btn-danger" id="viewDeleteBtn" onclick="deleteEvent()">삭제</button>
+                <button type="button" class="btn btn-secondary" onclick="openAddCommentModal()">의견</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 의견 전체보기 팝업 -->
+    <div id="commentModal" class="modal">
+        <div class="modal-content">
+            <h2>
+                의견<span id="commentMeta">
+                    <span id="commentIndex"></span>
+                    <span id="commentAuthor"></span>
+                    <span id="commentDate"></span>
+                </span>
+            </h2>
+            <div class="form-group">
+                <div id="commentFullText" class="view-value" style="white-space: pre-wrap;"></div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-danger" id="commentDeleteBtn" onclick="deleteCommentFromPopup()" style="display: none;">삭제</button>
+                <button type="button" class="btn btn-primary" onclick="closeCommentPopup()">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 의견 작성 팝업 (일관된 모달 디자인) -->
+    <div id="addCommentModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAddCommentModal()">&times;</span>
+            <h2>의견 작성</h2>
+            <div class="form-group">
+                <label for="addCommentText">의견</label>
+                <textarea id="addCommentText" placeholder="의견을 입력하세요..."></textarea>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-secondary" onclick="closeAddCommentModal()">취소</button>
+                <button type="button" class="btn btn-primary" onclick="saveCommentFromModal()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 작성 취소 확인 모달 -->
+    <div id="confirmCancelModal" class="modal">
+        <div class="modal-content">
+            <h2>확인</h2>
+            <p>작성을 취소할까요?</p>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-primary" onclick="confirmCancelYes()">예</button>
+                <button type="button" class="btn btn-secondary" onclick="confirmCancelNo()">아니오</button>
+            </div>
         </div>
     </div>
 

@@ -700,14 +700,77 @@ class PDFEditorApp {
             canvas.width = viewport.width; canvas.height = viewport.height;
             await page.render({ canvasContext: ctx, viewport }).promise;
 
-            // 기존 썸네일 이미지 교체
+            // 기존 썸네일 이미지 교체 (thumbnail은 div 래퍼이므로 내부 img 요소를 찾아서 업데이트)
             const thumbnail = doc.thumbnails[pageNumber - 1];
             if (thumbnail) {
-                thumbnail.src = canvas.toDataURL('image/png');
+                // thumbnail이 div 래퍼인 경우 내부의 img 요소를 찾아서 업데이트
+                const imgElement = thumbnail.querySelector('img');
+                if (imgElement) {
+                    imgElement.src = canvas.toDataURL('image/png');
+                } else {
+                    // img 요소가 없는 경우 thumbnail 자체가 img 요소일 수 있음
+                    thumbnail.src = canvas.toDataURL('image/png');
+                }
             }
         } catch (err) {
             console.error('썸네일 갱신 오류:', err);
         }
+    }
+
+    /**
+     * 페이지 삭제 후 rotation 맵을 정리합니다.
+     * @param {Object} doc - 문서 객체
+     * @param {Array<number>} deletedPageNumbers - 삭제된 페이지 번호 배열 (1부터 시작)
+     */
+    normalizeRotationsAfterDeletion(doc, deletedPageNumbers) {
+        if (!doc.rotations || Object.keys(doc.rotations).length === 0) {
+            return;
+        }
+
+        const newRotations = {};
+        const deletedSet = new Set(deletedPageNumbers);
+        
+        // 삭제되지 않은 페이지들의 rotation을 새 인덱스로 재매핑
+        Object.keys(doc.rotations).forEach(pageNum => {
+            const pageNumber = parseInt(pageNum);
+            if (!deletedSet.has(pageNumber)) {
+                // 삭제된 페이지들보다 앞에 있는 페이지 수만큼 인덱스 조정
+                const deletedBeforeCount = deletedPageNumbers.filter(deleted => deleted < pageNumber).length;
+                const newPageNumber = pageNumber - deletedBeforeCount;
+                if (newPageNumber >= 1) {
+                    newRotations[newPageNumber] = doc.rotations[pageNum];
+                }
+            }
+        });
+
+        doc.rotations = newRotations;
+        console.log('페이지 삭제 후 rotation 맵 정리 완료:', newRotations);
+    }
+
+    /**
+     * 페이지 재정렬 후 rotation 맵을 정리합니다.
+     * @param {Object} doc - 문서 객체
+     * @param {Array<number>} newOrder - 새로운 페이지 순서 (0부터 시작하는 인덱스 배열)
+     */
+    normalizeRotationsAfterReorder(doc, newOrder) {
+        if (!doc.rotations || Object.keys(doc.rotations).length === 0) {
+            return;
+        }
+
+        const newRotations = {};
+        
+        // 새로운 순서에 따라 rotation 맵 재매핑
+        newOrder.forEach((oldIndex, newIndex) => {
+            const oldPageNumber = oldIndex + 1; // 0-based index를 1-based로 변환
+            const newPageNumber = newIndex + 1; // 0-based index를 1-based로 변환
+            
+            if (doc.rotations[oldPageNumber]) {
+                newRotations[newPageNumber] = doc.rotations[oldPageNumber];
+            }
+        });
+
+        doc.rotations = newRotations;
+        console.log('페이지 재정렬 후 rotation 맵 정리 완료:', newRotations);
     }
 
     /**
@@ -1046,33 +1109,56 @@ class PDFEditorApp {
             totalWidth = Math.max(menuWidth, submenuRect.width + menuWidth);
         }
         
-        // 화면 크기
+        // 화면 크기 및 여백
         const screenWidth = window.innerWidth;
         const screenHeight = window.innerHeight;
+        const margin = 10;
         
         // 초기 위치 (마우스 위치)
         let x = e.clientX;
         let y = e.clientY;
         
-        // 오른쪽 경계 초과 시 왼쪽으로 이동
-        if (x + totalWidth > screenWidth) {
-            x = screenWidth - totalWidth - 10;
+        // 1. 수평 위치 조정 (Flip)
+        const rightSpace = screenWidth - margin - x;
+        const leftSpace = x - margin;
+        
+        if (totalWidth > rightSpace && leftSpace >= totalWidth) {
+            // 오른쪽 공간 부족하고 왼쪽에 충분한 공간이 있으면 왼쪽으로 flip
+            x = e.clientX - totalWidth;
+        } else if (totalWidth > rightSpace && leftSpace < totalWidth) {
+            // 양쪽 모두 공간이 부족하면 shift (가장 적절한 위치로)
+            if (leftSpace > rightSpace) {
+                // 왼쪽이 더 여유롭면 왼쪽에 최대한 맞춤
+                x = margin;
+            } else {
+                // 오른쪽이 더 여유롭거나 같으면 오른쪽에 최대한 맞춤
+                x = screenWidth - totalWidth - margin;
+            }
         }
         
-        // 아래쪽 경계 초과 시 위쪽으로 이동
-        if (y + menuHeight > screenHeight) {
-            y = screenHeight - menuHeight - 10;
+        // 2. 수직 위치 조정 (Flip)
+        const bottomSpace = screenHeight - margin - y;
+        const topSpace = y - margin;
+        
+        if (menuHeight > bottomSpace && topSpace >= menuHeight) {
+            // 아래쪽 공간 부족하고 위쪽에 충분한 공간이 있으면 위쪽으로 flip
+            y = e.clientY - menuHeight;
+        } else if (menuHeight > bottomSpace && topSpace < menuHeight) {
+            // 양쪽 모두 공간이 부족하면 shift (가장 적절한 위치로)
+            if (topSpace > bottomSpace) {
+                // 위쪽이 더 여유롭면 위쪽에 최대한 맞춤
+                y = margin;
+            } else {
+                // 아래쪽이 더 여유롭거나 같으면 아래쪽에 최대한 맞춤
+                y = screenHeight - menuHeight - margin;
+            }
         }
         
-        // 왼쪽 경계 초과 시 오른쪽으로 이동
-        if (x < 0) {
-            x = 10;
-        }
-        
-        // 위쪽 경계 초과 시 아래쪽으로 이동
-        if (y < 0) {
-            y = 10;
-        }
+        // 3. 최종 경계 검사 및 조정
+        if (x < margin) x = margin;
+        if (x + totalWidth > screenWidth - margin) x = screenWidth - totalWidth - margin;
+        if (y < margin) y = margin;
+        if (y + menuHeight > screenHeight - margin) y = screenHeight - menuHeight - margin;
         
         this.pageContextMenu.style.left = `${x}px`;
         this.pageContextMenu.style.top = `${y}px`;
@@ -1116,7 +1202,7 @@ class PDFEditorApp {
     }
 
     /**
-     * 서브메뉴 위치를 화면 경계에 맞게 조정합니다.
+     * 서브메뉴 위치를 화면 경계에 맞게 조정합니다 (collision detection + flip/shift).
      */
     adjustSubmenuPosition(submenu) {
         if (!submenu) return;
@@ -1142,39 +1228,68 @@ class PDFEditorApp {
         const submenuWidth = submenuRect.width;
         const submenuHeight = submenuRect.height;
         
-        // 화면 크기 (여백 포함)
+        // 화면 크기 및 여백
         const screenWidth = window.innerWidth;
         const screenHeight = window.innerHeight;
-        const margin = 10; // 화면 가장자리에서의 여백
+        const margin = 10;
         
         // 부모 메뉴 위치
         const parentMenu = submenu.closest('.context-menu');
         const parentRect = parentMenu.getBoundingClientRect();
         
-        // 서브메뉴가 표시될 실제 위치 계산
+        // 기본 위치 계산 (오른쪽, 부모와 같은 높이)
         let submenuLeft = parentRect.right;
         let submenuTop = parentRect.top;
         
-        // 오른쪽 경계 검사
-        if (submenuLeft + submenuWidth > screenWidth - margin) {
-            // 왼쪽에 표시
+        // 1. 수평 위치 조정 (Flip)
+        const rightSpace = screenWidth - margin - submenuLeft;
+        const leftSpace = parentRect.left - margin;
+        
+        if (submenuWidth > rightSpace && leftSpace >= submenuWidth) {
+            // 오른쪽 공간 부족하고 왼쪽에 충분한 공간이 있으면 왼쪽으로 flip
             submenuLeft = parentRect.left - submenuWidth;
-            
-            // 왼쪽도 화면 밖이면 부모 메뉴 중앙에 맞춤
-            if (submenuLeft < margin) {
-                submenuLeft = Math.max(margin, parentRect.left - submenuWidth / 2);
+        } else if (submenuWidth > rightSpace && leftSpace < submenuWidth) {
+            // 양쪽 모두 공간이 부족하면 shift (가장 적절한 위치로)
+            if (leftSpace > rightSpace) {
+                // 왼쪽이 더 여유롭면 왼쪽에 최대한 맞춤
+                submenuLeft = margin;
+            } else {
+                // 오른쪽이 더 여유롭거나 같으면 오른쪽에 최대한 맞춤
+                submenuLeft = screenWidth - submenuWidth - margin;
             }
         }
         
-        // 아래쪽 경계 검사
-        if (submenuTop + submenuHeight > screenHeight - margin) {
-            // 위쪽으로 조정
-            submenuTop = screenHeight - submenuHeight - margin;
-            
-            // 위쪽도 화면 밖이면 부모 메뉴 중앙에 맞춤
-            if (submenuTop < margin) {
-                submenuTop = Math.max(margin, parentRect.top - submenuHeight / 2);
+        // 2. 수직 위치 조정 (Flip)
+        const bottomSpace = screenHeight - margin - submenuTop;
+        const topSpace = parentRect.top - margin;
+        
+        if (submenuHeight > bottomSpace && topSpace >= submenuHeight) {
+            // 아래쪽 공간 부족하고 위쪽에 충분한 공간이 있으면 위쪽으로 flip
+            submenuTop = parentRect.bottom - submenuHeight;
+        } else if (submenuHeight > bottomSpace && topSpace < submenuHeight) {
+            // 양쪽 모두 공간이 부족하면 shift (가장 적절한 위치로)
+            if (topSpace > bottomSpace) {
+                // 위쪽이 더 여유롭면 위쪽에 최대한 맞춤
+                submenuTop = margin;
+            } else {
+                // 아래쪽이 더 여유롭거나 같으면 아래쪽에 최대한 맞춤
+                submenuTop = screenHeight - submenuHeight - margin;
             }
+        }
+        
+        // 3. 최종 경계 검사 및 조정
+        // 수평 경계 확인
+        if (submenuLeft < margin) {
+            submenuLeft = margin;
+        } else if (submenuLeft + submenuWidth > screenWidth - margin) {
+            submenuLeft = screenWidth - submenuWidth - margin;
+        }
+        
+        // 수직 경계 확인
+        if (submenuTop < margin) {
+            submenuTop = margin;
+        } else if (submenuTop + submenuHeight > screenHeight - margin) {
+            submenuTop = screenHeight - submenuHeight - margin;
         }
         
         // 부모 메뉴 기준 상대 위치로 변환
@@ -1185,6 +1300,15 @@ class PDFEditorApp {
         submenu.style.left = `${relativeLeft}px`;
         submenu.style.right = 'auto';
         submenu.style.top = `${relativeTop}px`;
+        
+        // 디버그 로그 (필요시 주석 해제)
+        // console.log('서브메뉴 위치 조정:', {
+        //     parentRect: { top: parentRect.top, left: parentRect.left, right: parentRect.right, bottom: parentRect.bottom },
+        //     submenuRect: { width: submenuWidth, height: submenuHeight },
+        //     finalPosition: { left: submenuLeft, top: submenuTop },
+        //     relativePosition: { left: relativeLeft, top: relativeTop },
+        //     screenSize: { width: screenWidth, height: screenHeight }
+        // });
         
         // 원래 상태로 복원 (표시 중이었다면 다시 표시)
         if (isCurrentlyVisible) {
@@ -1240,42 +1364,83 @@ class PDFEditorApp {
                     }
                     case 'page-move-before': {
                         const rc = this._rightClickSelection;
-                        const pages = rc && rc.documentId === documentId ? Array.from(rc.pages) : null;
-                        if (!pages || pages.length === 0) { this.showNotification('먼저 "이 페이지를..."로 페이지를 선택하세요.', 'warning'); break; }
-                        // 같은 문서 내 이동
-                        await this.reorderPagesInDocument(documentId, pages, pageNumber);
+                        if (!rc || !rc.pages || rc.pages.size === 0) { 
+                            this.showNotification('먼저 "이 페이지를..."로 페이지를 선택하세요.', 'warning'); 
+                            break; 
+                        }
+                        const pages = Array.from(rc.pages);
+                        const sourceDocumentId = rc.documentId;
+                        
+                        // 같은 문서 내 이동 또는 다른 문서로 이동
+                        if (sourceDocumentId === documentId) {
+                            // 같은 문서 내 이동
+                            await this.reorderPagesInDocument(documentId, pages, pageNumber);
+                        } else {
+                            // 다른 문서로 이동
+                            if (pages.length > 1) {
+                                await this.movePagesBetweenDocuments(sourceDocumentId, pages, documentId, pageNumber);
+                            } else {
+                                await this.movePageBetweenDocuments(sourceDocumentId, pages[0], documentId, pageNumber);
+                            }
+                        }
                         break;
                     }
                     case 'page-move-after': {
                         const rc = this._rightClickSelection;
-                        const pages = rc && rc.documentId === documentId ? Array.from(rc.pages) : null;
-                        if (!pages || pages.length === 0) { this.showNotification('먼저 "이 페이지를..."로 페이지를 선택하세요.', 'warning'); break; }
-                        // 같은 문서 내 이동
-                        await this.reorderPagesInDocument(documentId, pages, pageNumber + 1);
+                        if (!rc || !rc.pages || rc.pages.size === 0) { 
+                            this.showNotification('먼저 "이 페이지를..."로 페이지를 선택하세요.', 'warning'); 
+                            break; 
+                        }
+                        const pages = Array.from(rc.pages);
+                        const sourceDocumentId = rc.documentId;
+                        
+                        // 같은 문서 내 이동 또는 다른 문서로 이동
+                        if (sourceDocumentId === documentId) {
+                            // 같은 문서 내 이동
+                            await this.reorderPagesInDocument(documentId, pages, pageNumber + 1);
+                        } else {
+                            // 다른 문서로 이동
+                            const dest = pageNumber + 1;
+                            if (pages.length > 1) {
+                                await this.movePagesBetweenDocuments(sourceDocumentId, pages, documentId, dest);
+                            } else {
+                                await this.movePageBetweenDocuments(sourceDocumentId, pages[0], documentId, dest);
+                            }
+                        }
                         break;
                     }
                     case 'page-copy-before': {
                         const rc = this._rightClickSelection;
-                        const pages = rc && rc.documentId === documentId ? Array.from(rc.pages) : null;
-                        if (!pages || pages.length === 0) { this.showNotification('먼저 "이 페이지를..."로 페이지를 선택하세요.', 'warning'); break; }
-                        // 같은 문서 내 복사
+                        if (!rc || !rc.pages || rc.pages.size === 0) { 
+                            this.showNotification('먼저 "이 페이지를..."로 페이지를 선택하세요.', 'warning'); 
+                            break; 
+                        }
+                        const pages = Array.from(rc.pages);
+                        const sourceDocumentId = rc.documentId;
+                        
+                        // 같은 문서 내 복사 또는 다른 문서로 복사
                         if (pages.length > 1) {
-                            await this.copyPagesToDocumentBulk(documentId, pages, documentId, pageNumber);
+                            await this.copyPagesToDocumentBulk(sourceDocumentId, pages, documentId, pageNumber);
                         } else {
-                            await this.copyPageToDocument(documentId, pages[0], documentId, pageNumber);
+                            await this.copyPageToDocument(sourceDocumentId, pages[0], documentId, pageNumber);
                         }
                         break;
                     }
                     case 'page-copy-after': {
                         const rc = this._rightClickSelection;
-                        const pages = rc && rc.documentId === documentId ? Array.from(rc.pages) : null;
-                        if (!pages || pages.length === 0) { this.showNotification('먼저 "이 페이지를..."로 페이지를 선택하세요.', 'warning'); break; }
-                        // 같은 문서 내 복사
+                        if (!rc || !rc.pages || rc.pages.size === 0) { 
+                            this.showNotification('먼저 "이 페이지를..."로 페이지를 선택하세요.', 'warning'); 
+                            break; 
+                        }
+                        const pages = Array.from(rc.pages);
+                        const sourceDocumentId = rc.documentId;
+                        
+                        // 같은 문서 내 복사 또는 다른 문서로 복사
                         const dest = pageNumber + 1;
                         if (pages.length > 1) {
-                            await this.copyPagesToDocumentBulk(documentId, pages, documentId, dest);
+                            await this.copyPagesToDocumentBulk(sourceDocumentId, pages, documentId, dest);
                         } else {
-                            await this.copyPageToDocument(documentId, pages[0], documentId, dest);
+                            await this.copyPageToDocument(sourceDocumentId, pages[0], documentId, dest);
                         }
                         break;
                     }
@@ -1453,6 +1618,9 @@ class PDFEditorApp {
                 pageNumbers.forEach(pageNum => {
                     doc.deletedPages.add(pageNum);
                 });
+                
+                // 페이지 삭제 후 rotation 맵 정리
+                this.normalizeRotationsAfterDeletion(doc, pageNumbers);
                 
                 // 문서 변경 상태로 표시
                 doc.dirty = true;
@@ -1674,7 +1842,7 @@ class PDFEditorApp {
                 } catch (err) {
                     console.warn('파일 저장 대화상자 실패, 다운로드로 대체:', err);
                     // 폴백: 다운로드 방식
-                    await window.pdfEditor.downloadPdf(doc.pdf, filename);
+                    await window.pdfEditor.downloadPdf(doc.pdf, filename, doc.originalData);
                     savedCount++;
                 }
             }
@@ -1998,7 +2166,7 @@ class PDFEditorApp {
                     await window.pdfEditor.downloadModifiedPdf(outBytes, filename);
                 } else {
                     // 최후 폴백: 현재 pdf.js 문서를 변환하여 저장
-                    await window.pdfEditor.downloadPdf(doc.pdf, filename);
+                    await window.pdfEditor.downloadPdf(doc.pdf, filename, doc.originalData);
                 }
             }
         }
@@ -2024,7 +2192,7 @@ class PDFEditorApp {
             pdfDoc = await pdfLib.PDFDocument.load(bytes);
         }
         
-        // 삭제된 페이지가 있다면 먼저 삭제
+        // 삭제된 페이지가 있다면 먼저 삭제하고 rotation 맵 정리
         if (doc.deletedPages && doc.deletedPages.size > 0) {
             const pagesToDelete = Array.from(doc.deletedPages).sort((a, b) => b - a); // 역순으로 정렬
             for (const pageNum of pagesToDelete) {
@@ -2032,9 +2200,13 @@ class PDFEditorApp {
                     pdfDoc.removePage(pageNum - 1); // PDF-lib는 0-based 인덱스 사용
                 }
             }
+            
+            // 페이지 삭제 후 rotation 맵 정리 (원본 순서 기준으로 삭제된 페이지들)
+            const originalPagesToDelete = Array.from(doc.deletedPages);
+            this.normalizeRotationsAfterDeletion(doc, originalPagesToDelete);
         }
         
-        // 회전 적용
+        // 회전 적용 (정리된 rotation 맵 사용)
         const total = pdfDoc.getPageCount();
         for (let i = 0; i < total; i++) {
             const pg = pdfDoc.getPage(i);
@@ -2895,10 +3067,14 @@ class PDFEditorApp {
                 targetDoc.dirty = true;
             }
 
-            // 소스 문서 업데이트
+            // 소스 문서 업데이트 및 rotation 맵 정리
             sourceDoc.originalData = newSourceBytes;
             sourceDoc.pdf = await pdfjsLib.getDocument({ data: newSourceBytes }).promise;
             sourceDoc.pages = sourceDoc.pdf.numPages;
+            
+            // 소스 문서에서 페이지 삭제 후 rotation 맵 정리
+            this.normalizeRotationsAfterDeletion(sourceDoc, [sourcePageNumber]);
+            
             sourceDoc.dirty = true;
 
             // 썸네일 재생성
@@ -2994,10 +3170,14 @@ class PDFEditorApp {
                 targetDoc.dirty = true;
             }
 
-            // 소스 문서 업데이트
+            // 소스 문서 업데이트 및 rotation 맵 정리
             sourceDoc.originalData = newSourceBytes;
             sourceDoc.pdf = await pdfjsLib.getDocument({ data: newSourceBytes }).promise;
             sourceDoc.pages = sourceDoc.pdf.numPages;
+            
+            // 소스 문서에서 페이지들 삭제 후 rotation 맵 정리
+            this.normalizeRotationsAfterDeletion(sourceDoc, sourcePageNumbers);
+            
             sourceDoc.dirty = true;
 
             // 썸네일 재생성
