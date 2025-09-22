@@ -1,0 +1,9 @@
+config/
+migration/
+server/
+utils/
+
+# docs
+firebase-functions-setup.md
+README.md
+
