@@ -15,9 +15,38 @@ function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
-// 이벤트 저장 함수
+// 보안 유틸리티 함수들
+function sanitizeInput(input) {
+    if (typeof input !== 'string') {
+        return '';
+    }
+    
+    // HTML 태그 제거 및 특수문자 이스케이프
+    return input
+        .replace(/<[^>]*>/g, '') // HTML 태그 제거
+        .replace(/[<>]/g, '') // 남은 꺾쇠 괄호 제거
+        .replace(/javascript:/gi, '') // javascript: 프로토콜 제거
+        .replace(/on\w+\s*=/gi, '') // 이벤트 핸들러 제거
+        .trim();
+}
+
+// 이벤트 저장 함수 (입력 검증 강화)
 function saveEvents() {
-    localStorage.setItem('calendarEvents', JSON.stringify(events));
+    // 저장 전 모든 이벤트 데이터 검증 및 정리
+    const sanitizedEvents = events.map(event => ({
+        ...event,
+        title: sanitizeInput(event.title || ''),
+        description: sanitizeInput(event.description || ''),
+        type: sanitizeInput(event.type || ''),
+        authorName: sanitizeInput(event.authorName || ''),
+        comments: (event.comments || []).map(comment => ({
+            ...comment,
+            text: sanitizeInput(comment.text || ''),
+            commenter: sanitizeInput(comment.commenter || '')
+        }))
+    }));
+    
+    localStorage.setItem('calendarEvents', JSON.stringify(sanitizedEvents));
 }
 
 // 캘린더 렌더링 함수
@@ -193,12 +222,24 @@ function deleteEvent() {
 document.getElementById('eventForm').addEventListener('submit', function(e) {
     e.preventDefault();
     
-    const title = document.getElementById('eventTitle').value;
+    // 입력값 가져오기 및 검증
+    const title = sanitizeInput(document.getElementById('eventTitle').value);
     const date = document.getElementById('eventDate').value;
     const time = document.getElementById('eventTime').value;
-    const description = document.getElementById('eventDescription').value;
+    const description = sanitizeInput(document.getElementById('eventDescription').value);
     const typeSelect = document.getElementById('eventType');
-    const eventType = typeSelect ? typeSelect.value : '';
+    const eventType = typeSelect ? sanitizeInput(typeSelect.value) : '';
+    
+    // 필수 입력값 검증
+    if (!title.trim()) {
+        alert('제목을 입력해주세요.');
+        return;
+    }
+    
+    if (!date) {
+        alert('날짜를 선택해주세요.');
+        return;
+    }
     
     if (editingEventId) {
         // 수정
@@ -303,16 +344,29 @@ function closeAddCommentModal() {
 function saveCommentFromModal() {
     if (!viewingEventId) return;
     const textarea = document.getElementById('addCommentText');
-    const text = textarea ? textarea.value.trim() : '';
-    if (!text) return;
+    const rawText = textarea ? textarea.value : '';
+    const text = sanitizeInput(rawText).trim();
+    
+    if (!text) {
+        alert('의견을 입력해주세요.');
+        return;
+    }
+    
     const idx = events.findIndex(ev => ev.id === viewingEventId);
     if (idx === -1) return;
-    const commenter = sessionStorage.getItem('userName') || '익명';
-    const comment = { text, commenter, createdAt: new Date().toISOString() };
+    
+    const commenter = sanitizeInput(sessionStorage.getItem('userName') || '익명');
+    const comment = { 
+        text, 
+        commenter, 
+        createdAt: new Date().toISOString() 
+    };
+    
     const prev = Array.isArray(events[idx].comments) ? events[idx].comments : [];
     events[idx].comments = [...prev, comment];
     events[idx].updatedAt = new Date().toISOString();
     saveEvents();
+    
     // 테이블 갱신 및 모달 닫기
     const found = events.find(ev => ev.id === viewingEventId);
     if (found) renderCommentsTable(found);

@@ -66,28 +66,93 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 로그인 상태 확인 함수
+    // 로그인 상태 확인 함수 - Firebase Auth 토큰 검증 강화
     function checkLoginStatus() {
-        const isLoggedIn = localStorage.getItem('isLoggedIn') || sessionStorage.getItem('isLoggedIn');
-        const userId = localStorage.getItem('userId') || sessionStorage.getItem('userId');
-        const userRole = localStorage.getItem('userRole') || sessionStorage.getItem('userRole');
-        
-        if (isLoggedIn !== 'true' || userRole !== 'user') {
-            // 사용자가 아니거나 로그인되지 않은 상태라면 로그인 페이지로 리다이렉트
-            window.location.href = 'index.html';
-            return;
-        }
-
-        // 사용자 정보 표시
-        if (userId) {
-            const storedUserName = localStorage.getItem('userName') || sessionStorage.getItem('userName');
-            if (storedUserName) {
-                userName.textContent = `${storedUserName}님`;
-            } else {
-                userName.textContent = `${userId}님`;
+        // Firebase Auth 상태 확인
+        import('https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js').then(({ getAuth, onAuthStateChanged }) => {
+            import('https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js').then(({ initializeApp, getApp }) => {
+                // Firebase 앱 초기화 (이미 초기화된 경우 getApp 사용)
+                let app;
+                try {
+                    app = getApp();
+                } catch (error) {
+                    // 앱이 초기화되지 않은 경우 초기화
+                    const firebaseConfig = {
+                        apiKey: "AIzaSyBIaa_uz9PaofNXZjHpgkm-wjT4qhaN-vM",
+                        authDomain: "csy-todo-test.firebaseapp.com",
+                        databaseURL: "https://csy-todo-test-default-rtdb.asia-southeast1.firebasedatabase.app",
+                        projectId: "csy-todo-test",
+                        storageBucket: "csy-todo-test.firebasestorage.app",
+                        messagingSenderId: "841236508097",
+                        appId: "1:841236508097:web:18fadfa64353a25a61d340"
+                    };
+                    app = initializeApp(firebaseConfig);
+                }
+                const auth = getAuth(app);
+                
+                onAuthStateChanged(auth, async (user) => {
+                    if (!user) {
+                        // Firebase Auth에 로그인되지 않은 경우
+                        clearAuthData();
+                        window.location.href = 'index.html';
+                        return;
+                    }
+                    
+                    try {
+                        // ID 토큰 검증
+                        const idToken = await user.getIdToken();
+                        if (!idToken) {
+                            throw new Error('유효하지 않은 토큰');
+                        }
+                        
+                        // 토큰 만료 시간 확인 (5분 전에 갱신)
+                        const tokenResult = await user.getIdTokenResult();
+                        const expirationTime = new Date(tokenResult.expirationTime).getTime();
+                        const currentTime = Date.now();
+                        
+                        if (expirationTime - currentTime < 5 * 60 * 1000) {
+                            // 토큰이 5분 이내에 만료되면 갱신
+                            await user.getIdToken(true);
+                        }
+                        
+                        // 사용자 정보 표시
+                        const storedUserName = localStorage.getItem('userName') || sessionStorage.getItem('userName');
+                        if (storedUserName) {
+                            userName.textContent = `${storedUserName}님`;
+                        } else {
+                            userName.textContent = `${user.email?.split('@')[0] || '사용자'}님`;
+                        }
+                        userDept.textContent = '일반 사용자';
+                        
+                    } catch (error) {
+                        console.error('토큰 검증 실패:', error);
+                        clearAuthData();
+                        window.location.href = 'index.html';
+                    }
+                });
+            });
+        }).catch(error => {
+            console.error('Firebase 모듈 로드 실패:', error);
+            // 폴백: 기존 방식으로 검증
+            const isLoggedIn = localStorage.getItem('isLoggedIn') || sessionStorage.getItem('isLoggedIn');
+            if (isLoggedIn !== 'true') {
+                window.location.href = 'index.html';
             }
-            userDept.textContent = '일반 사용자';
-        }
+        });
+    }
+    
+    // 인증 데이터 정리 함수
+    function clearAuthData() {
+        localStorage.removeItem('isLoggedIn');
+        localStorage.removeItem('userId');
+        localStorage.removeItem('userRole');
+        localStorage.removeItem('userName');
+        localStorage.removeItem('firebaseUid');
+        sessionStorage.removeItem('isLoggedIn');
+        sessionStorage.removeItem('userId');
+        sessionStorage.removeItem('userRole');
+        sessionStorage.removeItem('userName');
+        sessionStorage.removeItem('firebaseUid');
     }
 
     // 로그아웃 함수

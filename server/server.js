@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const admin = require('firebase-admin');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 require('dotenv').config();
@@ -7,9 +8,71 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// CORS 설정
-app.use(cors());
-app.use(express.json());
+// CORS 설정 - Origin 화이트리스트 적용
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:8080',
+  'https://your-domain.vercel.app', // 실제 배포 도메인으로 변경
+  'https://cns-wsp.vercel.app' // 예시
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // 개발 환경에서는 origin이 undefined일 수 있음
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS 정책에 의해 차단되었습니다.'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
+}));
+
+app.use(express.json({ limit: '10mb' }));
+app.use(cookieParser());
+
+// CSRF 토큰 생성 및 검증 미들웨어
+const crypto = require('crypto');
+const csrfTokens = new Map(); // 실제 운영에서는 Redis 등 사용 권장
+
+// CSRF 토큰 생성
+app.get('/api/csrf-token', (req, res) => {
+  const token = crypto.randomBytes(32).toString('hex');
+  const expires = Date.now() + 3600000; // 1시간
+  csrfTokens.set(token, expires);
+  
+  res.cookie('csrf-token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 3600000
+  });
+  
+  res.json({ csrfToken: token });
+});
+
+// CSRF 검증 미들웨어
+const verifyCSRF = (req, res, next) => {
+  if (req.method === 'GET') return next(); // GET 요청은 CSRF 검증 제외
+  
+  const token = req.headers['x-csrf-token'] || req.body.csrfToken;
+  const cookieToken = req.cookies['csrf-token'];
+  
+  if (!token || !cookieToken || token !== cookieToken) {
+    return res.status(403).json({ error: 'CSRF 토큰이 유효하지 않습니다.' });
+  }
+  
+  // 토큰 만료 확인
+  const expires = csrfTokens.get(token);
+  if (!expires || Date.now() > expires) {
+    csrfTokens.delete(token);
+    return res.status(403).json({ error: 'CSRF 토큰이 만료되었습니다.' });
+  }
+  
+  next();
+};
 
 // Firebase Admin SDK 초기화
 const serviceAccount = {
@@ -58,7 +121,7 @@ const verifyAdmin = async (req, res, next) => {
 };
 
 // 사용자 비밀번호 변경 API
-app.post('/api/update-password', verifyAdmin, async (req, res) => {
+app.post('/api/update-password', verifyCSRF, verifyAdmin, async (req, res) => {
   try {
     const { uid, newPassword } = req.body;
 
@@ -77,15 +140,16 @@ app.post('/api/update-password', verifyAdmin, async (req, res) => {
       });
     }
 
-    // Firebase Auth에서 비밀번호 업데이트
+    // Firebase Auth에서만 비밀번호 업데이트 (DB에는 평문 저장하지 않음)
     await admin.auth().updateUser(uid, {
       password: newPassword
     });
 
-    // Firebase Database에서도 비밀번호 업데이트
+    // Firebase Database에는 메타 정보만 업데이트 (비밀번호는 저장하지 않음)
     const userRef = db.ref(`migratedUsers/${uid}`);
     await userRef.update({
-      password: newPassword,
+      passwordUpdatedAt: new Date().toISOString(),
+      passwordUpdatedBy: req.user.uid,
       processedAt: new Date().toISOString()
     });
 
@@ -104,7 +168,7 @@ app.post('/api/update-password', verifyAdmin, async (req, res) => {
 });
 
 // 사용자 정보 업데이트 API
-app.post('/api/update-user', verifyAdmin, async (req, res) => {
+app.post('/api/update-user', verifyCSRF, verifyAdmin, async (req, res) => {
   try {
     const { uid, userData } = req.body;
 

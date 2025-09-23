@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // 로그아웃 상태 플래그
     let isLoggingOut = false;
 
-    // 관리자 권한 확인
+    // 관리자 권한 확인 - Firebase Auth 토큰 검증 강화
     checkAdminStatus();
     
     // 통계 업데이트
@@ -81,11 +81,28 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (!firebaseUser) {
                 // Firebase Auth에 로그인된 사용자가 없음
+                clearAdminAuthData();
                 window.location.href = 'index.html';
                 return;
             }
 
             try {
+                // ID 토큰 검증 및 갱신
+                const idToken = await firebaseUser.getIdToken();
+                if (!idToken) {
+                    throw new Error('유효하지 않은 토큰');
+                }
+                
+                // 토큰 만료 시간 확인 (5분 전에 갱신)
+                const tokenResult = await firebaseUser.getIdTokenResult();
+                const expirationTime = new Date(tokenResult.expirationTime).getTime();
+                const currentTime = Date.now();
+                
+                if (expirationTime - currentTime < 5 * 60 * 1000) {
+                    // 토큰이 5분 이내에 만료되면 갱신
+                    await firebaseUser.getIdToken(true);
+                }
+                
                 // 사용자 정보 가져오기 (users 기준, firebaseUid로 매칭)
                 const usersRef = ref(database, 'users');
                 const snapshot = await get(usersRef);
@@ -111,10 +128,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 
             } catch (error) {
                 console.error('관리자 권한 확인 오류:', error);
+                clearAdminAuthData();
                 await signOut(auth);
                 window.location.href = 'index.html';
             }
         });
+    }
+    
+    // 관리자 인증 데이터 정리 함수
+    function clearAdminAuthData() {
+        localStorage.removeItem('isLoggedIn');
+        localStorage.removeItem('userId');
+        localStorage.removeItem('userRole');
+        localStorage.removeItem('userName');
+        localStorage.removeItem('firebaseUid');
+        sessionStorage.removeItem('isLoggedIn');
+        sessionStorage.removeItem('userId');
+        sessionStorage.removeItem('userRole');
+        sessionStorage.removeItem('userName');
+        sessionStorage.removeItem('firebaseUid');
     }
     
     // 통계 업데이트 함수 (users 기준)

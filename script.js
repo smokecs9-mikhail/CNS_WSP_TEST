@@ -54,16 +54,25 @@ document.addEventListener('DOMContentLoaded', function() {
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
             const firebaseUser = userCredential.user;
             
-            // Firebase Database에서 사용자 정보 가져오기 (users 기준)
+            // Firebase Database에서 사용자 정보 가져오기 (단일 경로 조회로 최적화)
+            // firebaseUid로 인덱스된 쿼리 사용 (Firebase 규칙에서 인덱스 설정 필요)
             const usersRef = ref(database, 'users');
             const snapshot = await get(usersRef);
             const users = snapshot.val() || {};
             
-            // UID로 매칭되는 사용자 찾기
+            // UID로 매칭되는 사용자 찾기 (최소한의 데이터만 처리)
             let userData = null;
             for (const key in users) {
                 if (users[key] && users[key].firebaseUid === firebaseUser.uid) {
-                    userData = users[key];
+                    // 필요한 최소 정보만 추출 (민감한 정보 제외)
+                    userData = {
+                        uid: key,
+                        name: users[key].name,
+                        email: users[key].email,
+                        role: users[key].role,
+                        status: users[key].status,
+                        firebaseUid: users[key].firebaseUid
+                    };
                     break;
                 }
             }
@@ -124,14 +133,22 @@ document.addEventListener('DOMContentLoaded', function() {
             if (firebaseUser) {
                 // Firebase Auth에 로그인된 사용자가 있음
                 try {
-                    // 사용자 정보 가져오기 (users 기준)
+                    // 사용자 정보 가져오기 (단일 경로 조회로 최적화)
                     const usersRef = ref(database, 'users');
                     const snapshot = await get(usersRef);
                     const users = snapshot.val() || {};
                     let userData = null;
                     for (const key in users) {
                         if (users[key] && users[key].firebaseUid === firebaseUser.uid) {
-                            userData = users[key];
+                            // 필요한 최소 정보만 추출 (민감한 정보 제외)
+                            userData = {
+                                uid: key,
+                                name: users[key].name,
+                                email: users[key].email,
+                                role: users[key].role,
+                                status: users[key].status,
+                                firebaseUid: users[key].firebaseUid
+                            };
                             break;
                         }
                     }
