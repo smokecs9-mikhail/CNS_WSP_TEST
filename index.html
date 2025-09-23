@@ -4,6 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CNS Corporation - 업무지원 페이지 로그인</title>
+    
+    <!-- Content Security Policy -->
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://www.gstatic.com https://*.firebasedatabase.app;
+        style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;
+        img-src 'self' data: blob:;
+        font-src 'self' https://cdnjs.cloudflare.com;
+        connect-src 'self' https://*.firebaseapp.com https://*.googleapis.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://cdn.jsdelivr.net;
+        frame-src 'self';
+        object-src 'none';
+        base-uri 'self';
+        form-action 'self';
+    ">
+    
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>

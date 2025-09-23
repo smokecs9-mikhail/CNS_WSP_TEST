@@ -19,6 +19,157 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const database = getDatabase(app);
 
+// 클라이언트 캐싱 시스템
+class ClientCache {
+    constructor() {
+        this.cachePrefix = 'cns_cache_';
+        this.defaultTTL = 5 * 60 * 1000; // 5분 기본 TTL
+        this.maxCacheSize = 50; // 최대 캐시 항목 수
+    }
+
+    getCacheKey(type, identifier) {
+        return `${this.cachePrefix}${type}_${identifier}`;
+    }
+
+    get(type, identifier) {
+        try {
+            const cacheKey = this.getCacheKey(type, identifier);
+            const cached = localStorage.getItem(cacheKey);
+            
+            if (!cached) {
+                return null;
+            }
+
+            const parsed = JSON.parse(cached);
+            
+            if (parsed.expires && Date.now() > parsed.expires) {
+                this.remove(type, identifier);
+                return null;
+            }
+
+            console.log(`클라이언트 캐시 히트: ${type}_${identifier}`);
+            return parsed.data;
+        } catch (error) {
+            console.error('캐시 조회 오류:', error);
+            return null;
+        }
+    }
+
+    set(type, identifier, data, ttl = this.defaultTTL) {
+        try {
+            const cacheKey = this.getCacheKey(type, identifier);
+            const cacheData = {
+                data: data,
+                cachedAt: Date.now(),
+                expires: Date.now() + ttl
+            };
+
+            localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+            console.log(`클라이언트 캐시 저장: ${type}_${identifier}`);
+            this.cleanup();
+        } catch (error) {
+            console.error('캐시 저장 오류:', error);
+        }
+    }
+
+    remove(type, identifier) {
+        try {
+            const cacheKey = this.getCacheKey(type, identifier);
+            localStorage.removeItem(cacheKey);
+            console.log(`클라이언트 캐시 제거: ${type}_${identifier}`);
+        } catch (error) {
+            console.error('캐시 제거 오류:', error);
+        }
+    }
+
+    removeByType(type) {
+        try {
+            const keys = Object.keys(localStorage);
+            const typePrefix = this.getCacheKey(type, '');
+            
+            keys.forEach(key => {
+                if (key.startsWith(typePrefix)) {
+                    localStorage.removeItem(key);
+                }
+            });
+            console.log(`클라이언트 캐시 타입별 제거: ${type}`);
+        } catch (error) {
+            console.error('캐시 타입별 제거 오류:', error);
+        }
+    }
+
+    cleanup() {
+        try {
+            const keys = Object.keys(localStorage);
+            const cacheKeys = keys.filter(key => key.startsWith(this.cachePrefix));
+            
+            let cleaned = 0;
+            cacheKeys.forEach(key => {
+                try {
+                    const cached = localStorage.getItem(key);
+                    if (cached) {
+                        const parsed = JSON.parse(cached);
+                        if (parsed.expires && Date.now() > parsed.expires) {
+                            localStorage.removeItem(key);
+                            cleaned++;
+                        }
+                    }
+                } catch (error) {
+                    localStorage.removeItem(key);
+                    cleaned++;
+                }
+            });
+
+            if (cacheKeys.length - cleaned > this.maxCacheSize) {
+                this.evictOldest();
+            }
+
+            if (cleaned > 0) {
+                console.log(`클라이언트 캐시 정리: ${cleaned}개 항목 제거`);
+            }
+        } catch (error) {
+            console.error('캐시 정리 오류:', error);
+        }
+    }
+
+    evictOldest() {
+        try {
+            const keys = Object.keys(localStorage);
+            const cacheKeys = keys.filter(key => key.startsWith(this.cachePrefix));
+            
+            let oldestKey = null;
+            let oldestTime = Date.now();
+            
+            cacheKeys.forEach(key => {
+                try {
+                    const cached = localStorage.getItem(key);
+                    if (cached) {
+                        const parsed = JSON.parse(cached);
+                        if (parsed.cachedAt && parsed.cachedAt < oldestTime) {
+                            oldestTime = parsed.cachedAt;
+                            oldestKey = key;
+                        }
+                    }
+                } catch (error) {
+                    if (!oldestKey) {
+                        oldestKey = key;
+                    }
+                }
+            });
+            
+            if (oldestKey) {
+                localStorage.removeItem(oldestKey);
+                console.log(`클라이언트 캐시 제거: ${oldestKey}`);
+            }
+        } catch (error) {
+            console.error('캐시 제거 오류:', error);
+        }
+    }
+}
+
+// 전역 클라이언트 캐시 인스턴스
+const clientCache = new ClientCache();
+
 document.addEventListener('DOMContentLoaded', function() {
     const adminName = document.getElementById('adminName');
     const adminDept = document.getElementById('adminDept');
@@ -103,19 +254,55 @@ document.addEventListener('DOMContentLoaded', function() {
                     await firebaseUser.getIdToken(true);
                 }
                 
-                // 사용자 정보 가져오기 (users 기준, firebaseUid로 매칭)
-                const usersRef = ref(database, 'users');
-                const snapshot = await get(usersRef);
-                const users = snapshot.val() || {};
+                // 호환성: 새로운 데이터 모델과 기존 데이터 모델 모두 지원 (캐싱 적용)
                 let userData = null;
-                for (const key in users) {
-                    if (users[key] && users[key].firebaseUid === firebaseUser.uid) {
-                        userData = users[key];
-                        break;
+                let userRole = 'user';
+                
+                // 1. 캐시에서 먼저 확인
+                const cachedUserData = clientCache.get('admin_user', firebaseUser.uid);
+                if (cachedUserData) {
+                    userData = cachedUserData.userData;
+                    userRole = cachedUserData.userRole;
+                } else {
+                    // 2. 캐시 미스 - Firebase에서 조회
+                    console.log(`클라이언트 캐시 미스: admin_user_${firebaseUser.uid}`);
+                    
+                    // 1. 새로운 데이터 모델 시도: users/{uid} 구조
+                    const userRef = ref(database, `users/${firebaseUser.uid}`);
+                    const userSnapshot = await get(userRef);
+                    userData = userSnapshot.val();
+                    
+                    if (userData) {
+                        // 새로운 구조에서 역할 정보 조회
+                        const roleRef = ref(database, `meta/roles/${firebaseUser.uid}`);
+                        const roleSnapshot = await get(roleRef);
+                        const roleData = roleSnapshot.val();
+                        userRole = roleData?.role || 'user';
+                    } else {
+                        // 2. 기존 데이터 모델 시도: users/{key} 구조 (firebaseUid로 매칭)
+                        const usersRef = ref(database, 'users');
+                        const snapshot = await get(usersRef);
+                        const users = snapshot.val() || {};
+                        
+                        for (const key in users) {
+                            if (users[key] && users[key].firebaseUid === firebaseUser.uid) {
+                                userData = users[key];
+                                userRole = users[key].role || 'user';
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // 3. 조회된 데이터를 캐시에 저장 (5분 TTL)
+                    if (userData) {
+                        clientCache.set('admin_user', firebaseUser.uid, {
+                            userData: userData,
+                            userRole: userRole
+                        }, 5 * 60 * 1000);
                     }
                 }
                 
-                if (!userData || userData.role !== 'admin' || userData.status !== 'approved') {
+                if (!userData || userRole !== 'admin' || userData.status !== 'approved') {
                     // 관리자가 아니거나 승인되지 않은 사용자
                     await signOut(auth);
                     window.location.href = 'index.html';
@@ -147,6 +334,9 @@ document.addEventListener('DOMContentLoaded', function() {
         sessionStorage.removeItem('userRole');
         sessionStorage.removeItem('userName');
         sessionStorage.removeItem('firebaseUid');
+        
+        // 관리자 관련 캐시도 정리
+        clientCache.removeByType('admin_user');
     }
     
     // 통계 업데이트 함수 (users 기준)

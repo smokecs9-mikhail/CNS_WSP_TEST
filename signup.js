@@ -125,18 +125,27 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // 3) RTDB에 사용자 정보 저장 (비밀번호는 저장하지 않음)
+            // 새로운 데이터 모델: users/{uid} 구조로 저장
             const newUser = {
-                id: userId,
                 name: userName,
-                role: userRole,
                 status: 'pending',
                 createdAt: new Date().toISOString(),
-                firebaseUid: createdUid,
                 email: email
             };
 
-            const newUserRef = push(ref(database, 'users'));
-            await set(newUserRef, newUser);
+            // 사용자 데이터 저장 (users/{uid})
+            const userRef = ref(database, `users/${createdUid}`);
+            await set(userRef, newUser);
+            
+            // 역할 정보는 별도 인덱스에 저장 (meta/roles/{uid})
+            const roleData = {
+                role: userRole,
+                permissions: {},
+                createdAt: new Date().toISOString()
+            };
+            
+            const roleRef = ref(database, `meta/roles/${createdUid}`);
+            await set(roleRef, roleData);
 
             console.log('Auth/RTDB 사용자 등록 완료:', newUser);
 

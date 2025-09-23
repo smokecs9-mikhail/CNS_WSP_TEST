@@ -68,6 +68,16 @@
   - `status` 필드 접근 권한 세분화
   - 관리자/일반 사용자 권한 명확화
 
+### 7. 사용 흐름 보안 강화 ✅
+**파일**: `main.js`, `main.html`, `admin.html`, `index.html`
+- **문제**: 로그인 유지 시 localStorage 데이터 불일치, iframe 보안 부족
+- **해결**: Auth 상태 기준 프로필 재조회, iframe sandbox/CSP 적용
+- **변경사항**:
+  - Firebase Auth 상태 기준으로 사용자 데이터 재조회
+  - localStorage/sessionStorage 일관성 보장
+  - iframe에 sandbox 속성 적용
+  - 모든 HTML 페이지에 CSP 헤더 추가
+
 ## 추가 보안 권장사항
 
 ### 1. Firebase 콘솔 설정

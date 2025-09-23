@@ -30,6 +30,7 @@ class ScheduleManager {
         this.rowCount = 0;
         this.rows = new Map(); // Firebase document IDs를 저장
         this.isFirebaseConnected = false; // Firebase 연결 상태 추적
+        this.isRestoringColumnWidths = false; // 컬럼 너비 복원 중복 방지 플래그
         
         console.log('DOM 요소들:', {
             tableBody: this.tableBody,
@@ -42,7 +43,7 @@ class ScheduleManager {
     }
     
     init() {
-        console.log('init() 메서드 시작');
+        // 콘솔 로그 제거 - 과도한 로그 방지
         this.addRowBtn.addEventListener('click', () => this.addRow());
         this.saveDataBtn.addEventListener('click', () => this.saveData());
         this.loadDataBtn.addEventListener('click', () => this.loadData());
@@ -58,9 +59,9 @@ class ScheduleManager {
         this.updateFirebaseWarning();
 
         // Firebase에서 데이터 로드
-        console.log('Firebase 데이터 로드 시작');
+        // 콘솔 로그 제거 - 과도한 로그 방지
         this.loadDataFromFirebase();
-        console.log('init() 메서드 완료');
+        // 콘솔 로그 제거 - 과도한 로그 방지
 
         // 재연결 버튼
         const retryBtn = document.getElementById('retryFirebaseBtn');
@@ -108,8 +109,7 @@ class ScheduleManager {
         // 한글 주석: 고정 행 상태 갱신(1~3행 sticky)
         this.applyStickyRows();
         
-        console.log(`행 ${this.rowCount} 추가됨:`, row);
-        console.log('추가된 textarea 개수:', row.querySelectorAll('textarea').length);
+        // 콘솔 로그 제거 - 과도한 로그 방지
         
         // 이벤트 리스너 추가
         this.attachRowEventListeners(row);
@@ -140,7 +140,7 @@ class ScheduleManager {
             <td><textarea data-field="manager"></textarea></td>
             <td><textarea data-field="remarks"></textarea></td>
         `;
-        console.log(`행 ${rowNumber} HTML 생성:`, html);
+        // 콘솔 로그 제거 - 과도한 로그 방지
         return html;
     }
     
@@ -407,7 +407,7 @@ class ScheduleManager {
             // Excel 파일 다운로드
             XLSX.writeFile(wb, fileName);
             
-            console.log('Excel 파일이 다운로드되었습니다:', fileName);
+            // 콘솔 로그 제거 - 과도한 로그 방지
         } catch (error) {
             console.error('Excel 다운로드 실패:', error);
             alert('Excel 파일 다운로드 중 오류가 발생했습니다: ' + error.message);
@@ -469,7 +469,7 @@ class ScheduleManager {
             // 행에 Firebase key 저장(안정 키 사용)
             row.dataset.firebaseId = key;
             this.rows.set(row, key);
-            console.log('행이 Firebase에 저장되었습니다(안정키):', key);
+            // 콘솔 로그 제거 - 과도한 로그 방지
         } catch (error) {
             console.error('Firebase 저장 실패:', error);
             throw error;
@@ -488,7 +488,7 @@ class ScheduleManager {
             });
             // 한글 주석: 키 저장(최초 저장 시)
             row.dataset.firebaseId = key;
-            console.log('행이 Firebase에서 업데이트되었습니다:', key);
+            // 콘솔 로그 제거 - 과도한 로그 방지
         } catch (error) {
             console.error('Firebase 업데이트 실패:', error);
             throw error;
@@ -497,7 +497,7 @@ class ScheduleManager {
 
     async loadDataFromFirebase() {
         try {
-            console.log('Firebase에서 데이터 로드를 시작합니다...');
+            // 콘솔 로그 제거 - 과도한 로그 방지
 
             // 연결 테스트: 간단한 쓰기 시도 (table 데이터 밖 경로 사용)
             const testRef = ref(database, 'meta/connectionTest');
@@ -524,7 +524,7 @@ class ScheduleManager {
             let data = snapshot.val();
             
             if (!data) {
-                console.log('Firebase에 데이터가 없습니다. (자동 행 생성 생략)');
+                // 콘솔 로그 제거 - 과도한 로그 방지
                 // 한글 주석: 예전에는 빈 화면에 9행을 자동 추가했지만, 예기치 않은 행 증가를 막기 위해 생략
                 this.isFirebaseConnected = true;
                 this.updateFirebaseWarning();
@@ -541,7 +541,7 @@ class ScheduleManager {
                 console.warn('중복 정리 중 경고:', e);
             }
 
-            console.log(`Firebase에서 ${Object.keys(data).length}개의 데이터를 찾았습니다.`);
+            // 콘솔 로그 제거 - 과도한 로그 방지
             
             // 한글 주석: 빈 행 판별 유틸
             const isEmptyRow = (obj) => {
@@ -563,13 +563,13 @@ class ScheduleManager {
                 this.addRowFromFirebase(value, key);
             });
             
-            console.log('Firebase에서 데이터를 성공적으로 로드했습니다.');
+            // 콘솔 로그 제거 - 과도한 로그 방지
             this.isFirebaseConnected = true;
             this.updateFirebaseWarning();
             
         } catch (error) {
             console.error('Firebase 로드 실패:', error);
-            console.log('Firebase 연결 실패로 인해 오프라인 모드로 전환합니다.');
+            // 콘솔 로그 제거 - 과도한 로그 방지
             
             // Firebase 연결 실패 시 오프라인 모드로 전환
             this.enableOfflineMode();
@@ -714,7 +714,7 @@ class ScheduleManager {
     }
 
     enableOfflineMode() {
-        console.log('오프라인 모드 활성화');
+        // 콘솔 로그 제거 - 과도한 로그 방지
         this.isFirebaseConnected = false;
         
         // 기존 데이터 초기화
@@ -732,7 +732,7 @@ class ScheduleManager {
 
     // 컬럼 리사이징 기능 초기화
     initColumnResizing() {
-        console.log('컬럼 리사이징 기능 초기화');
+        // 콘솔 로그 제거 - 과도한 로그 방지
         const table = document.getElementById('scheduleTable');
         if (!table) return;
 
@@ -764,19 +764,16 @@ class ScheduleManager {
                 handle.dataset.columnNumber = i; // 실제 컬럼 번호 저장
                 header.appendChild(handle);
                 
-                // 컬럼 이름 확인
+                // 컬럼 이름 확인 - 콘솔 로그 제거
                 const columnText = header.textContent.trim();
-                console.log(`컬럼 ${i} (${columnText})에 리사이즈 핸들 추가`);
+                // 콘솔 로그 제거 - 과도한 로그 방지
                 
-                // 핸들 위치 확인 (1-1부터 3-3까지)
+                // 핸들 위치 확인 (1-1부터 3-3까지) - 콘솔 로그 제거
                 if (i >= 7 && i <= 15) {
                     setTimeout(() => {
                         const rect = handle.getBoundingClientRect();
                         const computedStyle = window.getComputedStyle(handle);
-                        console.log(`컬럼 ${i} 핸들 정보:`);
-                        console.log(`  - 위치: x=${rect.left}, y=${rect.top}, width=${rect.width}, height=${rect.height}`);
-                        console.log(`  - CSS: display=${computedStyle.display}, visibility=${computedStyle.visibility}, z-index=${computedStyle.zIndex}`);
-                        console.log(`  - 부모 요소: ${header.tagName}, 클래스: ${header.className}`);
+                        // 콘솔 로그 제거 - 과도한 로그 방지
                     }, 100);
                 }
             } else {
@@ -787,9 +784,9 @@ class ScheduleManager {
         // 리사이징 이벤트 리스너 추가
         this.attachResizeListeners();
         
-        // 생성된 핸들 개수 확인
+        // 생성된 핸들 개수 확인 - 콘솔 로그 제거
         const allHandles = document.querySelectorAll('.column-resize-handle');
-        console.log(`총 ${allHandles.length}개의 리사이즈 핸들이 생성되었습니다.`);
+        // 콘솔 로그 제거 - 과도한 로그 방지
     }
 
     // 한글 주석: colgroup 준비 (없으면 생성). 초기 너비는 현재 헤더 계산값으로 설정
@@ -851,7 +848,7 @@ class ScheduleManager {
                 // 단계 컬럼은 바디 셀 기준이 더 안정적임
                 startWidth = isStage && bodyCell ? bodyCell.offsetWidth : (header ? header.offsetWidth : 100);
                 
-                console.log(`리사이즈 시작: 컬럼 ${actualColumnNumber}, 시작 너비: ${startWidth}px`);
+                // 콘솔 로그 제거 - 과도한 로그 방지
                 
                 // 핸들 활성화 스타일
                 handle.classList.add('active');
@@ -922,7 +919,7 @@ class ScheduleManager {
         // 바디 셀은 공통 규칙
         const cells = table.querySelectorAll(`tbody td:nth-child(${columnNumber})`);
 
-        console.log(`컬럼 ${columnNumber} 너비 조정: ${clampedWidth}px, 헤더: ${headers.length}개, 셀: ${cells.length}개 (isStage=${isStageColumn})`);
+        // 콘솔 로그 제거 - 과도한 로그 방지
 
         [...headers, ...cells].forEach(cell => {
             // 인라인 스타일로 강제 적용
@@ -937,13 +934,10 @@ class ScheduleManager {
             cell.setAttribute('style', prev + `; width: ${clampedWidth}px !important;`);
         });
         
-        // 디버깅을 위한 실제 적용 확인 (바디 셀 우선 확인)
+        // 디버깅을 위한 실제 적용 확인 (바디 셀 우선 확인) - 콘솔 로그 제거
         const firstCell = table.querySelector(`tbody td:nth-child(${columnNumber})`);
         const targetForCheck = firstCell || headers[0];
-        if (targetForCheck) {
-            const computedStyle = window.getComputedStyle(targetForCheck);
-            console.log(`실시간 리사이징 - 설정: ${clampedWidth}px, 실제 적용: ${computedStyle.width}`);
-        }
+        // 콘솔 로그 제거 - 과도한 로그 방지
         if (col) col.style.width = clampedWidth + 'px';
     }
 
@@ -966,6 +960,9 @@ class ScheduleManager {
 
         const isStageColumn = columnNumber >= 7 && columnNumber <= 18;
         const subHeaderIndex = columnNumber - 6; // 1..12
+        const mainHeaderIndex = !isStageColumn
+            ? (columnNumber <= 6 ? columnNumber : (columnNumber >= 19 ? columnNumber - 11 : columnNumber))
+            : null;
         // 한글 주석: 과도한 값 방지용 클램프(최소 50px, 상한 없음)
         const clampedWidth = Math.max(50, newWidth);
 
@@ -1025,18 +1022,13 @@ class ScheduleManager {
             }
         });
         
-        // 실제 적용 확인 (바디 셀 우선 확인)
+        // 실제 적용 확인 (바디 셀 우선 확인) - 콘솔 로그 제거
         const testElement = document.querySelector(`#scheduleTable tbody td:nth-child(${columnNumber})`) || (
             isStageColumn
                 ? document.querySelector(`#scheduleTable thead tr.sub-header th:nth-child(${subHeaderIndex})`)
                 : document.querySelector(`#scheduleTable thead tr.main-header th:nth-child(${mainHeaderIndex})`)
         );
-        if (testElement) {
-            const computedWidth = window.getComputedStyle(testElement).width;
-            console.log(`컬럼 ${columnNumber} 너비가 ${clampedWidth}px로 업데이트되었습니다. (실제 적용: ${computedWidth})`);
-        } else {
-            console.log(`컬럼 ${columnNumber} 너비가 ${clampedWidth}px로 업데이트되었습니다.`);
-        }
+        // 콘솔 로그 제거 - 과도한 로그 방지
         const col = document.querySelector('#scheduleTable colgroup col:nth-child(' + columnNumber + ')');
         if (col) col.style.width = clampedWidth + 'px';
 
@@ -1078,17 +1070,24 @@ class ScheduleManager {
         }
 
         localStorage.setItem('schedule_column_widths', JSON.stringify(columnWidths));
-        console.log('컬럼 너비가 로컬 스토리지에 저장되었습니다:', columnWidths);
+        // 콘솔 로그 제거 - 과도한 로그 방지
     }
 
     // 저장된 컬럼 너비 복원
     restoreColumnWidths() {
+        // 중복 호출 방지
+        if (this.isRestoringColumnWidths) return;
+        this.isRestoringColumnWidths = true;
+        
         const savedWidths = localStorage.getItem('schedule_column_widths');
-        if (!savedWidths) return;
+        if (!savedWidths) {
+            this.isRestoringColumnWidths = false;
+            return;
+        }
 
         try {
             const columnWidths = JSON.parse(savedWidths);
-            console.log('저장된 컬럼 너비 복원:', columnWidths);
+            // 콘솔 로그 제거 - 과도한 로그 방지
 
             // 각 컬럼의 너비 복원
             Object.entries(columnWidths).forEach(([columnKey, width]) => {
@@ -1099,7 +1098,7 @@ class ScheduleManager {
                 
                 // 유효한 너비 값인지 확인 (50px ~ 3000px 범위)
                 if (!isNaN(widthValue) && widthValue >= 50 && widthValue <= 3000 && columnIndex >= 1 && columnIndex <= 20) {
-                    console.log(`컬럼 ${columnIndex} 너비 복원: ${widthValue}px`);
+                    // 콘솔 로그 제거 - 과도한 로그 방지
                     
                     // CSS 규칙으로 복원 + colgroup 동기화
                     this.updateColumnWidthInCSS(columnIndex, widthValue);
@@ -1125,6 +1124,9 @@ class ScheduleManager {
             });
         } catch (error) {
             console.error('컬럼 너비 복원 실패:', error);
+        } finally {
+            // 플래그 해제
+            this.isRestoringColumnWidths = false;
         }
     }
 
@@ -1171,7 +1173,7 @@ class ScheduleManager {
             });
         }
 
-        console.log('컬럼 너비가 초기화되었습니다.');
+        // 콘솔 로그 제거 - 과도한 로그 방지
         alert('컬럼 너비가 초기화되었습니다.');
     }
 
@@ -1242,7 +1244,7 @@ class ScheduleManager {
     saveToLocalStorage() {
         const data = this.collectData();
         localStorage.setItem('scheduleData', JSON.stringify(data));
-        console.log('로컬 스토리지에 데이터 저장됨');
+        // 콘솔 로그 제거 - 과도한 로그 방지
     }
     
     loadFromLocalStorage() {
@@ -1251,7 +1253,7 @@ class ScheduleManager {
             try {
                 const data = JSON.parse(savedData);
                 this.loadDataIntoTable(data);
-                console.log('로컬 스토리지에서 데이터 로드됨');
+                // 콘솔 로그 제거 - 과도한 로그 방지
                 return true;
             } catch (error) {
                 console.error('로컬 스토리지 데이터 로드 실패:', error);
