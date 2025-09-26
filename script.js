@@ -2,23 +2,38 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebas
 import { getDatabase, ref, get, set, push } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyBIaa_uz9PaofNXZjHpgkm-wjT4qhaN-vM",
-  authDomain: "csy-todo-test.firebaseapp.com",
-  databaseURL: "https://csy-todo-test-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "csy-todo-test",
-  storageBucket: "csy-todo-test.firebasestorage.app",
-  messagingSenderId: "841236508097",
-  appId: "1:841236508097:web:18fadfa64353a25a61d340"
-};
+// Firebase 서비스를 저장할 전역 변수
+let auth, database;
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const database = getDatabase(app);
-const auth = getAuth(app);
+// 서버에서 Firebase 설정을 가져와 초기화하는 함수
+async function initializeFirebase() {
+    try {
+        const response = await fetch('/api/firebase-config');
+        if (!response.ok) {
+            throw new Error(`서버 응답 오류: ${response.status}`);
+        }
+        const firebaseConfig = await response.json();
 
-// 클라이언트 캐싱 시스템
+        if (!firebaseConfig || !firebaseConfig.apiKey) {
+            throw new Error('수신된 Firebase 설정이 유효하지 않습니다.');
+        }
+
+        const app = initializeApp(firebaseConfig);
+        database = getDatabase(app);
+        auth = getAuth(app);
+
+        console.log('Firebase가 성공적으로 초기화되었습니다.');
+
+    } catch (error) {
+        console.error('Firebase 초기화 실패:', error);
+        const errorMessage = document.getElementById('errorMessage');
+        if (errorMessage) {
+            errorMessage.textContent = '애플리케이션을 초기화하는 데 실패했습니다. 관리자에게 문의하세요.';
+        }
+    }
+}
+
+// 클라이언트 캐싱 시스템 (기존 코드와 동일)
 class ClientCache {
     constructor() {
         this.cachePrefix = 'cns_cache_';
@@ -34,18 +49,12 @@ class ClientCache {
         try {
             const cacheKey = this.getCacheKey(type, identifier);
             const cached = localStorage.getItem(cacheKey);
-            
-            if (!cached) {
-                return null;
-            }
-
+            if (!cached) return null;
             const parsed = JSON.parse(cached);
-            
             if (parsed.expires && Date.now() > parsed.expires) {
                 this.remove(type, identifier);
                 return null;
             }
-
             console.log(`클라이언트 캐시 히트: ${type}_${identifier}`);
             return parsed.data;
         } catch (error) {
@@ -57,12 +66,7 @@ class ClientCache {
     set(type, identifier, data, ttl = this.defaultTTL) {
         try {
             const cacheKey = this.getCacheKey(type, identifier);
-            const cacheData = {
-                data: data,
-                cachedAt: Date.now(),
-                expires: Date.now() + ttl
-            };
-
+            const cacheData = { data, cachedAt: Date.now(), expires: Date.now() + ttl };
             localStorage.setItem(cacheKey, JSON.stringify(cacheData));
             console.log(`클라이언트 캐시 저장: ${type}_${identifier}`);
             this.cleanup();
@@ -85,7 +89,6 @@ class ClientCache {
         try {
             const keys = Object.keys(localStorage);
             const typePrefix = this.getCacheKey(type, '');
-            
             keys.forEach(key => {
                 if (key.startsWith(typePrefix)) {
                     localStorage.removeItem(key);
@@ -101,7 +104,6 @@ class ClientCache {
         try {
             const keys = Object.keys(localStorage);
             const cacheKeys = keys.filter(key => key.startsWith(this.cachePrefix));
-            
             let cleaned = 0;
             cacheKeys.forEach(key => {
                 try {
@@ -118,14 +120,8 @@ class ClientCache {
                     cleaned++;
                 }
             });
-
-            if (cacheKeys.length - cleaned > this.maxCacheSize) {
-                this.evictOldest();
-            }
-
-            if (cleaned > 0) {
-                console.log(`클라이언트 캐시 정리: ${cleaned}개 항목 제거`);
-            }
+            if (cacheKeys.length - cleaned > this.maxCacheSize) this.evictOldest();
+            if (cleaned > 0) console.log(`클라이언트 캐시 정리: ${cleaned}개 항목 제거`);
         } catch (error) {
             console.error('캐시 정리 오류:', error);
         }
@@ -135,10 +131,8 @@ class ClientCache {
         try {
             const keys = Object.keys(localStorage);
             const cacheKeys = keys.filter(key => key.startsWith(this.cachePrefix));
-            
             let oldestKey = null;
             let oldestTime = Date.now();
-            
             cacheKeys.forEach(key => {
                 try {
                     const cached = localStorage.getItem(key);
@@ -150,12 +144,9 @@ class ClientCache {
                         }
                     }
                 } catch (error) {
-                    if (!oldestKey) {
-                        oldestKey = key;
-                    }
+                    if (!oldestKey) oldestKey = key;
                 }
             });
-            
             if (oldestKey) {
                 localStorage.removeItem(oldestKey);
                 console.log(`클라이언트 캐시 제거: ${oldestKey}`);
@@ -166,10 +157,17 @@ class ClientCache {
     }
 }
 
-// 전역 클라이언트 캐시 인스턴스
 const clientCache = new ClientCache();
 
-document.addEventListener('DOMContentLoaded', function() {
+// DOM이 로드된 후 Firebase를 초기화하고 메인 로직을 실행
+document.addEventListener('DOMContentLoaded', async function() {
+    await initializeFirebase();
+
+    // Firebase 초기화가 실패하면 더 이상 진행하지 않음
+    if (!auth || !database) {
+        return;
+    }
+
     const loginForm = document.getElementById('loginForm');
     const userIdInput = document.getElementById('userId');
     const userPasswordInput = document.getElementById('userPassword');
@@ -177,199 +175,129 @@ document.addEventListener('DOMContentLoaded', function() {
     const errorMessage = document.getElementById('errorMessage');
     const signupBtn = document.getElementById('signupBtn');
 
-    // 페이지 로드 시 로그인 상태 확인
     checkLoginStatus();
 
-    // 폼 제출 이벤트 처리
     loginForm.addEventListener('submit', function(e) {
         e.preventDefault();
         handleLogin();
     });
 
-    // 회원가입 버튼 이벤트 처리
     signupBtn.addEventListener('click', function() {
         window.location.href = 'signup.html';
     });
 
-    // 로그인 처리 함수 (Firebase Auth 사용)
     async function handleLogin() {
         const userId = userIdInput.value.trim();
         const password = userPasswordInput.value;
         const keepLogin = keepLoginCheckbox.checked;
 
         try {
-            // 이메일 형식으로 변환 (Firebase Auth는 이메일을 요구함)
             const email = `${userId}@cnsinc.co.kr`;
-            
-            // Firebase Auth로 로그인 시도
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
             const firebaseUser = userCredential.user;
             
-            // 호환성: 새로운 데이터 모델과 기존 데이터 모델 모두 지원 (캐싱 적용)
-            let combinedUserData = null;
-            
-            // 1. 캐시에서 먼저 확인
-            const cachedUserData = clientCache.get('login_user', firebaseUser.uid);
-            if (cachedUserData) {
-                combinedUserData = cachedUserData;
-            } else {
-                // 2. 캐시 미스 - Firebase에서 조회
+            let combinedUserData = clientCache.get('login_user', firebaseUser.uid);
+            if (!combinedUserData) {
                 console.log(`클라이언트 캐시 미스: login_user_${firebaseUser.uid}`);
-                
-                // 1. 새로운 데이터 모델 시도: users/{uid} 구조
                 const userRef = ref(database, `users/${firebaseUser.uid}`);
                 const userSnapshot = await get(userRef);
                 const userData = userSnapshot.val();
-                
+
                 if (userData) {
-                    // 새로운 구조에서 역할 정보 조회
                     const roleRef = ref(database, `meta/roles/${firebaseUser.uid}`);
                     const roleSnapshot = await get(roleRef);
                     const roleData = roleSnapshot.val();
-                    
                     combinedUserData = {
-                        uid: firebaseUser.uid,
-                        name: userData.name,
-                        email: userData.email,
-                        status: userData.status,
-                        role: roleData?.role || 'user',
-                        permissions: roleData?.permissions || {},
-                        firebaseUid: firebaseUser.uid
+                        uid: firebaseUser.uid, name: userData.name, email: userData.email,
+                        status: userData.status, role: roleData?.role || 'user',
+                        permissions: roleData?.permissions || {}, firebaseUid: firebaseUser.uid
                     };
                 } else {
-                    // 2. 기존 데이터 모델 시도: users/{key} 구조 (firebaseUid로 매칭)
                     const usersRef = ref(database, 'users');
                     const snapshot = await get(usersRef);
                     const users = snapshot.val() || {};
-                    
                     for (const key in users) {
                         if (users[key] && users[key].firebaseUid === firebaseUser.uid) {
                             combinedUserData = {
-                                uid: key,
-                                name: users[key].name,
-                                email: users[key].email,
-                                status: users[key].status,
-                                role: users[key].role || 'user',
-                                permissions: users[key].permissions || {},
-                                firebaseUid: users[key].firebaseUid
+                                uid: key, name: users[key].name, email: users[key].email,
+                                status: users[key].status, role: users[key].role || 'user',
+                                permissions: users[key].permissions || {}, firebaseUid: users[key].firebaseUid
                             };
                             break;
                         }
                     }
                 }
-                
-                // 3. 조회된 데이터를 캐시에 저장 (10분 TTL)
                 if (combinedUserData) {
                     clientCache.set('login_user', firebaseUser.uid, combinedUserData, 10 * 60 * 1000);
                 }
             }
-            
-            if (combinedUserData && combinedUserData.status === 'approved') {
-                // 로그인 성공
-                errorMessage.textContent = '';
-                
-                // 로그인 정보 저장
-                if (keepLogin) {
-                    // 로컬스토리지는 최소 정보만 저장
-                    localStorage.setItem('isLoggedIn', 'true');
-                    localStorage.setItem('userId', combinedUserData.uid);
-                    localStorage.setItem('userName', combinedUserData.name);
-                    localStorage.setItem('userRole', combinedUserData.role);
-                    localStorage.setItem('userEmail', email);
-                    localStorage.setItem('firebaseUid', firebaseUser.uid);
-                    localStorage.setItem('keepLogin', 'true');
-                } else {
-                    sessionStorage.setItem('isLoggedIn', 'true');
-                    sessionStorage.setItem('userId', combinedUserData.uid);
-                    sessionStorage.setItem('userName', combinedUserData.name);
-                    sessionStorage.setItem('userRole', combinedUserData.role);
-                    sessionStorage.setItem('userEmail', email);
-                    sessionStorage.setItem('firebaseUid', firebaseUser.uid);
-                }
 
-                // 권한에 따른 페이지 이동
-                if (combinedUserData.role === 'admin') {
-                    window.location.href = 'admin.html';
-                } else {
-                    window.location.href = 'main.html';
-                }
+            if (combinedUserData && combinedUserData.status === 'approved') {
+                errorMessage.textContent = '';
+                const storage = keepLogin ? localStorage : sessionStorage;
+                storage.setItem('isLoggedIn', 'true');
+                storage.setItem('userId', combinedUserData.uid);
+                storage.setItem('userName', combinedUserData.name);
+                storage.setItem('userRole', combinedUserData.role);
+                storage.setItem('userEmail', email);
+                storage.setItem('firebaseUid', firebaseUser.uid);
+                if (keepLogin) localStorage.setItem('keepLogin', 'true');
+
+                window.location.href = combinedUserData.role === 'admin' ? 'admin.html' : 'main.html';
             } else if (combinedUserData && combinedUserData.status === 'pending') {
-                // 승인 대기 중인 사용자
-                await signOut(auth); // Firebase Auth에서 로그아웃
+                await signOut(auth);
                 errorMessage.textContent = '승인 대기 중입니다. 관리자의 승인을 기다려주세요.';
             } else {
-                // 사용자 정보가 없거나 승인되지 않음
-                await signOut(auth); // Firebase Auth에서 로그아웃
+                await signOut(auth);
                 errorMessage.textContent = '아이디 또는 비밀번호가 올바르지 않습니다.';
             }
         } catch (error) {
             console.error('로그인 오류:', error);
-            if (error.code === 'auth/user-not-found') {
-                errorMessage.textContent = '존재하지 않는 사용자입니다.';
-            } else if (error.code === 'auth/wrong-password') {
-                errorMessage.textContent = '비밀번호가 올바르지 않습니다.';
-            } else if (error.code === 'auth/invalid-email') {
-                errorMessage.textContent = '이메일 형식이 올바르지 않습니다.';
-            } else if (error.code === 'auth/too-many-requests') {
-                errorMessage.textContent = '너무 많은 로그인 시도가 있었습니다. 잠시 후 다시 시도해주세요.';
-            } else {
-                errorMessage.textContent = '로그인 중 오류가 발생했습니다. 다시 시도해주세요.';
-            }
+            const errorMessages = {
+                'auth/user-not-found': '존재하지 않는 사용자입니다.',
+                'auth/wrong-password': '비밀번호가 올바르지 않습니다.',
+                'auth/invalid-email': '이메일 형식이 올바르지 않습니다.',
+                'auth/too-many-requests': '너무 많은 로그인 시도가 있었습니다. 잠시 후 다시 시도해주세요.'
+            };
+            errorMessage.textContent = errorMessages[error.code] || '로그인 중 오류가 발생했습니다. 다시 시도해주세요.';
         }
     }
 
-    // 로그인 상태 확인 함수 (Firebase Auth 사용)
     function checkLoginStatus() {
         onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
-                // Firebase Auth에 로그인된 사용자가 있음
                 try {
-                    // 사용자 정보 가져오기 (단일 경로 조회로 최적화)
                     const usersRef = ref(database, 'users');
                     const snapshot = await get(usersRef);
                     const users = snapshot.val() || {};
                     let userData = null;
                     for (const key in users) {
                         if (users[key] && users[key].firebaseUid === firebaseUser.uid) {
-                            // 필요한 최소 정보만 추출 (민감한 정보 제외)
                             userData = {
-                                uid: key,
-                                name: users[key].name,
-                                email: users[key].email,
-                                role: users[key].role,
-                                status: users[key].status,
+                                uid: key, name: users[key].name, email: users[key].email,
+                                role: users[key].role, status: users[key].status,
                                 firebaseUid: users[key].firebaseUid
                             };
                             break;
                         }
                     }
-                    
                     if (userData && userData.status === 'approved') {
-                        // 로그인 정보 저장
                         const isKeepLogin = localStorage.getItem('keepLogin') === 'true';
-                        if (isKeepLogin) {
-                            // 로컬스토리지는 최소 정보만 유지
-                            localStorage.setItem('isLoggedIn', 'true');
-                            localStorage.setItem('firebaseUid', firebaseUser.uid);
-                        } else {
-                            sessionStorage.setItem('isLoggedIn', 'true');
-                            sessionStorage.setItem('userId', userData.id);
-                            sessionStorage.setItem('userName', userData.name);
-                            sessionStorage.setItem('userRole', userData.role);
-                            sessionStorage.setItem('userEmail', firebaseUser.email);
-                            sessionStorage.setItem('firebaseUid', firebaseUser.uid);
+                        const storage = isKeepLogin ? localStorage : sessionStorage;
+                        storage.setItem('isLoggedIn', 'true');
+                        storage.setItem('firebaseUid', firebaseUser.uid);
+                        if (!isKeepLogin) {
+                            storage.setItem('userId', userData.id);
+                            storage.setItem('userName', userData.name);
+                            storage.setItem('userRole', userData.role);
+                            storage.setItem('userEmail', firebaseUser.email);
                         }
                         
-                        // 권한에 따른 페이지 이동
-                        if (window.location.pathname !== '/index.html' && window.location.pathname !== '/' && !window.location.href.includes('index.html')) {
-                            if (userData.role === 'admin') {
-                                window.location.href = 'admin.html';
-                            } else {
-                                window.location.href = 'main.html';
-                            }
+                        const path = window.location.pathname;
+                        if (path !== '/index.html' && path !== '/' && !path.includes('index.html')) {
+                            window.location.href = userData.role === 'admin' ? 'admin.html' : 'main.html';
                         }
                     } else {
-                        // 사용자 정보가 없거나 승인되지 않음
                         await signOut(auth);
                     }
                 } catch (error) {
@@ -380,19 +308,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 입력 필드 포커스 시 에러 메시지 초기화
-    userIdInput.addEventListener('focus', function() {
-        errorMessage.textContent = '';
-    });
-
-    userPasswordInput.addEventListener('focus', function() {
-        errorMessage.textContent = '';
-    });
-
-    // Enter 키 이벤트 처리
-    userPasswordInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            handleLogin();
-        }
+    userIdInput.addEventListener('focus', () => { errorMessage.textContent = ''; });
+    userPasswordInput.addEventListener('focus', () => { errorMessage.textContent = ''; });
+    userPasswordInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleLogin();
     });
 });

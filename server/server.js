@@ -53,6 +53,27 @@ app.get('/api/csrf-token', (req, res) => {
   res.json({ csrfToken: token });
 });
 
+// 클라이언트용 Firebase 설정 제공 API
+app.get('/api/firebase-config', (req, res) => {
+  const firebaseConfig = {
+    apiKey: process.env.CLIENT_FIREBASE_API_KEY,
+    authDomain: process.env.CLIENT_FIREBASE_AUTH_DOMAIN,
+    databaseURL: process.env.CLIENT_FIREBASE_DATABASE_URL,
+    projectId: process.env.CLIENT_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.CLIENT_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.CLIENT_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.CLIENT_FIREBASE_APP_ID,
+  };
+
+  // 필수 환경 변수들이 설정되었는지 확인
+  if (!firebaseConfig.apiKey || !firebaseConfig.authDomain) {
+    console.error('클라이언트 Firebase 설정에 필요한 환경 변수가 누락되었습니다.');
+    return res.status(500).json({ error: '서버 설정 오류' });
+  }
+
+  res.json(firebaseConfig);
+});
+
 // CSRF 검증 미들웨어
 const verifyCSRF = (req, res, next) => {
   if (req.method === 'GET') return next(); // GET 요청은 CSRF 검증 제외
