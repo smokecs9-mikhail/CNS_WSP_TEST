@@ -5,7 +5,7 @@
 
 // Firebase 설정 및 초기화
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getDatabase, ref, push, set, onValue, remove } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+import { getDatabase, ref, push, set, onValue, remove, get } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
 
 // Firebase 설정 (sche.html과 동일한 설정 사용)
 const firebaseConfig = {
@@ -105,6 +105,10 @@ class PropertyCalculator {
         // Firebase에서 데이터 로드 시도 (약간의 지연 후)
         setTimeout(() => {
             this.loadDataFromFirebase();
+            // 30일 지난 휴지통 데이터 자동 정리 (5초 후)
+            setTimeout(() => {
+                this.cleanupExpiredTrash();
+            }, 5000);
         }, 1000);
     }
 
@@ -457,7 +461,10 @@ class PropertyCalculator {
         
         // 입력값 저장
         const inputs = this.collectFormData();
-        this.inputsStore[historyItem.id] = inputs;
+        this.inputsStore[historyItem.id] = {
+            inputs: inputs,
+            detailedInfo: null // 초기에는 상세 정보 없음
+        };
         
         // 로컬 스토리지에 저장 (백업용)
         localStorage.setItem('propertyHistory', JSON.stringify(this.history));
@@ -515,8 +522,11 @@ class PropertyCalculator {
      * 히스토리에서 입력값 불러오기
      */
     loadHistoryItem(id) {
-        const inputs = this.inputsStore[id];
-        if (!inputs) return false;
+        const data = this.inputsStore[id];
+        if (!data) return false;
+
+        // 구조 변경 대응: 기존 데이터와 새 데이터 구조 모두 지원
+        const inputs = data.inputs || data;
 
         // 폼 필드에 값 설정
         document.getElementById('propertyName').value = inputs.propertyName || '';
@@ -576,9 +586,11 @@ class PropertyCalculator {
         document.getElementById('resultFacilityDesc').textContent = FACILITY_DESCRIPTIONS[historyItem.facilityGrade] || '';
         document.getElementById('resultMarketValue').textContent = calculator.formatMillionWon(historyItem.currentValue);
         
-        // 조사일자 기본값 설정 (현재 년도)
-        const currentYear = new Date().getFullYear();
-        document.getElementById('investigationYear').value = currentYear;
+        // 상세 정보 불러오기
+        this.loadDetailedInfo(historyItem.id);
+        
+        // 현재 ID 저장 (나중에 상세 정보 저장 시 사용)
+        modal.dataset.currentId = historyItem.id;
         
         modal.style.display = 'block';
     }
@@ -605,6 +617,149 @@ class PropertyCalculator {
     }
 
     /**
+     * 상세 정보 수집
+     */
+    collectDetailedInfo() {
+        // 체크박스 수집
+        const facilities = Array.from(document.querySelectorAll('input[name="facilities"]:checked'))
+            .map(cb => cb.value);
+
+        return {
+            investigatorName: document.getElementById('investigatorName').value.trim(),
+            investigationYear: document.getElementById('investigationYear').value,
+            investigationMonth: document.getElementById('investigationMonth').value,
+            investigationDay: document.getElementById('investigationDay').value,
+            facilities: facilities,
+            confirmerName: document.getElementById('confirmerName').value.trim(),
+            opinionText: document.getElementById('opinionText').value.trim()
+        };
+    }
+
+    /**
+     * 상세 정보 불러오기
+     */
+    loadDetailedInfo(id) {
+        const data = this.inputsStore[id];
+        if (!data) {
+            // 데이터가 없으면 초기화
+            this.clearDetailedInfo();
+            return false;
+        }
+
+        const detailedInfo = data.detailedInfo;
+        
+        if (detailedInfo) {
+            // 상세 정보가 있으면 불러오기
+            document.getElementById('investigatorName').value = detailedInfo.investigatorName || '';
+            document.getElementById('investigationYear').value = detailedInfo.investigationYear || '';
+            document.getElementById('investigationMonth').value = detailedInfo.investigationMonth || '';
+            document.getElementById('investigationDay').value = detailedInfo.investigationDay || '';
+            document.getElementById('confirmerName').value = detailedInfo.confirmerName || '';
+            document.getElementById('opinionText').value = detailedInfo.opinionText || '';
+            
+            // 체크박스 복원
+            document.querySelectorAll('input[name="facilities"]').forEach(cb => {
+                cb.checked = detailedInfo.facilities && detailedInfo.facilities.includes(cb.value);
+            });
+            
+            // 원본 데이터 저장 (변경 감지용)
+            this.originalDetailedInfo = JSON.stringify(detailedInfo);
+        } else {
+            // 상세 정보가 없으면 기본값 설정
+            const currentYear = new Date().getFullYear();
+            document.getElementById('investigationYear').value = currentYear;
+            document.getElementById('investigationMonth').value = '';
+            document.getElementById('investigationDay').value = '';
+            document.getElementById('investigatorName').value = '';
+            document.getElementById('confirmerName').value = '';
+            document.getElementById('opinionText').value = '';
+            
+            // 체크박스 초기화
+            document.querySelectorAll('input[name="facilities"]').forEach(cb => {
+                cb.checked = false;
+            });
+            
+            // 원본 데이터를 빈 객체로 설정
+            this.originalDetailedInfo = JSON.stringify({
+                investigatorName: '',
+                investigationYear: currentYear.toString(),
+                investigationMonth: '',
+                investigationDay: '',
+                facilities: [],
+                confirmerName: '',
+                opinionText: ''
+            });
+        }
+        
+        return true;
+    }
+
+    /**
+     * 상세 정보 초기화
+     */
+    clearDetailedInfo() {
+        const currentYear = new Date().getFullYear();
+        document.getElementById('investigationYear').value = currentYear;
+        document.getElementById('investigationMonth').value = '';
+        document.getElementById('investigationDay').value = '';
+        document.getElementById('investigatorName').value = '';
+        document.getElementById('confirmerName').value = '';
+        document.getElementById('opinionText').value = '';
+        
+        // 체크박스 초기화
+        document.querySelectorAll('input[name="facilities"]').forEach(cb => {
+            cb.checked = false;
+        });
+    }
+
+    /**
+     * 상세 정보 변경 감지
+     */
+    hasDetailedInfoChanged() {
+        const currentInfo = this.collectDetailedInfo();
+        const currentInfoStr = JSON.stringify(currentInfo);
+        
+        // 원본 데이터가 없으면 변경되지 않은 것으로 간주
+        if (!this.originalDetailedInfo) {
+            return false;
+        }
+        
+        return currentInfoStr !== this.originalDetailedInfo;
+    }
+
+    /**
+     * 상세 정보 저장 (Firebase 및 로컬)
+     */
+    async saveDetailedInfo(id) {
+        try {
+            const detailedInfo = this.collectDetailedInfo();
+            
+            // inputsStore 업데이트
+            if (this.inputsStore[id]) {
+                this.inputsStore[id].detailedInfo = detailedInfo;
+            } else {
+                console.error('해당 ID의 데이터를 찾을 수 없습니다:', id);
+                return false;
+            }
+            
+            // 로컬 스토리지에 저장
+            localStorage.setItem('propertyInputs', JSON.stringify(this.inputsStore));
+            
+            // Firebase에 저장
+            await this.saveInputsToFirebase(this.inputsStore);
+            
+            // 원본 데이터 업데이트 (변경 감지 초기화)
+            this.originalDetailedInfo = JSON.stringify(detailedInfo);
+            
+            console.log('상세 정보 저장 완료:', id);
+            return true;
+        } catch (error) {
+            console.error('상세 정보 저장 실패:', error);
+            return false;
+        }
+    }
+
+    /**
      * 히스토리 아이템 삭제
      */
     deleteHistoryItem(id) {
@@ -615,9 +770,16 @@ class PropertyCalculator {
     }
 
     /**
-     * 선택된 히스토리 아이템들 삭제
+     * 선택된 히스토리 아이템들 삭제 (휴지통으로 이동)
      */
     async deleteSelectedHistory(ids) {
+        // 삭제할 항목들을 휴지통으로 이동
+        const deletedItems = this.history.filter(item => ids.includes(item.id));
+        for (const item of deletedItems) {
+            await this.moveToTrash(item.id, item, this.inputsStore[item.id]);
+        }
+        
+        // 히스토리에서 제거
         this.history = this.history.filter(item => !ids.includes(item.id));
         ids.forEach(id => delete this.inputsStore[id]);
         
@@ -630,9 +792,14 @@ class PropertyCalculator {
     }
 
     /**
-     * 모든 히스토리 삭제
+     * 모든 히스토리 삭제 (휴지통으로 이동)
      */
     async clearHistory() {
+        // 모든 항목을 휴지통으로 이동
+        for (const item of this.history) {
+            await this.moveToTrash(item.id, item, this.inputsStore[item.id]);
+        }
+        
         this.history = [];
         this.inputsStore = {};
         
@@ -812,7 +979,7 @@ class PropertyCalculator {
             }
 
             const historyRef = ref(database, 'propertyCalculator/history');
-            const snapshot = await onValue(historyRef);
+            const snapshot = await get(historyRef);
             const data = snapshot.val();
             
             if (data) {
@@ -826,6 +993,67 @@ class PropertyCalculator {
             }
         } catch (error) {
             console.error('Firebase 선택 항목 삭제 실패:', error);
+        }
+    }
+
+    /**
+     * 휴지통으로 이동 (30일간 보관)
+     */
+    async moveToTrash(itemId, historyItem, inputData) {
+        try {
+            if (!this.isFirebaseConnected) {
+                console.log('Firebase 연결되지 않음. 휴지통 기능을 사용할 수 없습니다.');
+                return;
+            }
+
+            const trashData = {
+                id: itemId,
+                deletedAt: Date.now(),
+                expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000), // 30일 후
+                historyItem: historyItem,
+                inputData: inputData
+            };
+
+            const trashRef = ref(database, `propertyCalculator/trash/${itemId}`);
+            await set(trashRef, trashData);
+            
+            console.log('휴지통으로 이동 완료:', itemId);
+        } catch (error) {
+            console.error('휴지통 이동 실패:', error);
+        }
+    }
+
+    /**
+     * 30일 지난 휴지통 데이터 자동 정리
+     */
+    async cleanupExpiredTrash() {
+        try {
+            if (!this.isFirebaseConnected) {
+                return;
+            }
+
+            const trashRef = ref(database, 'propertyCalculator/trash');
+            const snapshot = await get(trashRef);
+
+            const trashData = snapshot.val();
+            if (!trashData) return;
+
+            const now = Date.now();
+            let cleanedCount = 0;
+
+            for (const [key, item] of Object.entries(trashData)) {
+                if (item.expiresAt && item.expiresAt < now) {
+                    const itemRef = ref(database, `propertyCalculator/trash/${key}`);
+                    await remove(itemRef);
+                    cleanedCount++;
+                }
+            }
+
+            if (cleanedCount > 0) {
+                console.log(`${cleanedCount}개의 만료된 휴지통 항목 정리 완료`);
+            }
+        } catch (error) {
+            console.error('휴지통 정리 실패:', error);
         }
     }
 
@@ -893,6 +1121,20 @@ function renderHistoryTable() {
             <td>${formatNumberLocal(item.noi)}원</td>
             <td>${item.capRate ?? ''}%</td>
         `;
+        
+        // 더블클릭 이벤트 추가 (결과 불러오기)
+        row.addEventListener('dblclick', function(e) {
+            // 체크박스 클릭은 제외
+            if (e.target.type === 'checkbox') {
+                return;
+            }
+            // 결과 모달 표시
+            calculator.loadHistoryResult(item.id);
+        });
+        
+        // 행에 마우스 오버 시 스타일 추가
+        row.style.cursor = 'pointer';
+        
         tbody.appendChild(row);
     });
 }
@@ -914,9 +1156,11 @@ function showResultModal(result) {
     document.getElementById('resultFacilityDesc').textContent = FACILITY_DESCRIPTIONS[result.facilityGrade] || '';
     document.getElementById('resultMarketValue').textContent = calculator.formatMillionWon(result.currentValue);
     
-    // 조사일자 기본값 설정 (현재 년도)
-    const currentYear = new Date().getFullYear();
-    document.getElementById('investigationYear').value = currentYear;
+    // 상세 정보 초기화 (새 계산 결과는 상세 정보가 없음)
+    calculator.clearDetailedInfo();
+    
+    // 현재 ID 저장
+    modal.dataset.currentId = result.id || Date.now();
     
     modal.style.display = 'block';
 }
@@ -953,7 +1197,94 @@ function formatNumberInput(input) {
 }
 
 /**
- * CSV 내보내기
+ * 모든자료 내려받기 (입력값 + 결과값 + 상세정보)
+ */
+function exportAllData() {
+    const history = calculator.getHistory();
+    if (history.length === 0) {
+        alert('내보낼 데이터가 없습니다.');
+        return;
+    }
+
+    // CSV 헤더 (사용자 요청 순서대로)
+    let csv = '시간,물건명,물건 주소,' +
+              '월간 임대료 총액/월,보증금 총액,광고수익/월,주차수익/월,기타수익/월,' +
+              '시설 관리비 총액/월,관리수익률(%),매매기준 수익률(%),' +
+              '입지 등급(1~5),임대 안정성(1~5),접근성 등급(1~5),시설 등급(1~5),' +
+              '현재 공실률(%),' +
+              'Market Value,Value-Add Potential,HBU Value,NOI,CapRate(%),' +
+              '조사담당자,조사일자,확인한 시설,확인자,검토 의견\n';
+    
+    history.forEach(item => {
+        const inputData = calculator.inputsStore[item.id];
+        
+        // 기존 데이터 구조와 새 데이터 구조 모두 지원
+        let inputs, detailedInfo;
+        
+        if (inputData) {
+            if (inputData.inputs) {
+                // 새 구조: { inputs: {...}, detailedInfo: {...} }
+                inputs = inputData.inputs;
+                detailedInfo = inputData.detailedInfo || {};
+            } else {
+                // 기존 구조: { propertyName: ..., monthlyRent: ..., ... }
+                inputs = inputData;
+                detailedInfo = {};
+            }
+        } else {
+            inputs = {};
+            detailedInfo = {};
+        }
+        
+        // 조사일자 포맷팅
+        let investigationDate = '';
+        if (detailedInfo.investigationYear) {
+            investigationDate = `${detailedInfo.investigationYear}년 ${detailedInfo.investigationMonth || ''}월 ${detailedInfo.investigationDay || ''}일`;
+        }
+        
+        // 확인시설 배열을 문자열로 변환
+        const facilities = detailedInfo.facilities ? detailedInfo.facilities.join('; ') : '';
+        
+        // CSV 특수문자 이스케이프 처리 (쉼표, 따옴표, 줄바꿈)
+        const escapeCSV = (str) => {
+            if (str == null || str === undefined) return '';
+            const strValue = String(str);
+            if (strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')) {
+                return `"${strValue.replace(/"/g, '""')}"`;
+            }
+            return strValue;
+        };
+        
+        // 데이터 행 생성 (요청된 순서대로)
+        csv += `${escapeCSV(item.timestamp)},${escapeCSV(item.propertyName)},${escapeCSV(inputs.propertyAddress || '')}` + ',';
+        csv += `${inputs.monthlyRent || ''},${inputs.deposit || ''},${inputs.adIncome || ''},${inputs.parkingIncome || ''},${inputs.otherIncome || ''}` + ',';
+        csv += `${inputs.facilityCosts || ''},${inputs.managementReturnRate || ''},${inputs.capRate || ''}` + ',';
+        csv += `${item.locationGrade || ''},${item.stabilityGrade || ''},${item.accessibilityGrade || ''},${item.facilityGrade || ''}` + ',';
+        csv += `${inputs.currentVacancy || ''}` + ',';
+        csv += `${item.currentValue || ''},${item.potentialValue || ''},${item.growthValue || ''},${item.noi || ''},${item.capRate || ''}` + ',';
+        csv += `${escapeCSV(detailedInfo.investigatorName || '')},${escapeCSV(investigationDate)},${escapeCSV(facilities)},${escapeCSV(detailedInfo.confirmerName || '')},${escapeCSV(detailedInfo.opinionText || '')}`;
+        csv += '\n';
+    });
+
+    // UTF-8 BOM 추가 (Excel에서 한글 깨짐 방지)
+    const BOM = '\uFEFF';
+    const csvWithBOM = BOM + csv;
+    
+    const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `부동산_전체자료_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    alert('모든 자료가 CSV 파일로 다운로드되었습니다.');
+}
+
+/**
+ * CSV 내보내기 (결과값만)
  */
 function exportToCSV() {
     const history = calculator.getHistory();
@@ -994,26 +1325,15 @@ async function deleteSelectedItems() {
         return;
     }
 
+    // 확인 대화상자 표시
+    if (!confirm('선택한 결과를 삭제하시겠습니까?')) {
+        return;
+    }
+
     const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
     await calculator.deleteSelectedHistory(selectedIds);
     renderHistoryTable();
     alert(`${selectedIds.length}개 항목이 삭제되었습니다.`);
-}
-
-/**
- * 모든 항목 삭제
- */
-async function deleteAllItems() {
-    if (calculator.getHistory().length === 0) {
-        alert('삭제할 데이터가 없습니다.');
-        return;
-    }
-
-    if (confirm('모든 계산 결과를 삭제하시겠습니까?')) {
-        await calculator.clearHistory();
-        renderHistoryTable();
-        alert('모든 데이터가 삭제되었습니다.');
-    }
 }
 
 /**
@@ -1524,9 +1844,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
     // 버튼 이벤트들
+    document.getElementById('exportAllData').addEventListener('click', exportAllData);
     document.getElementById('exportCsv').addEventListener('click', exportToCSV);
     document.getElementById('deleteSelected').addEventListener('click', deleteSelectedItems);
-    document.getElementById('deleteAll').addEventListener('click', deleteAllItems);
     document.getElementById('loadSelected').addEventListener('click', loadSelectedItem);
     document.getElementById('loadResult').addEventListener('click', loadSelectedResult);
     
@@ -1543,6 +1863,38 @@ document.addEventListener('DOMContentLoaded', function() {
     // 폰트 선택 버튼
     document.getElementById('selectFont').addEventListener('click', function() {
         openFontModal();
+    });
+
+    // 상세 정보 저장 버튼
+    document.getElementById('saveDetailedInfo').addEventListener('click', async function() {
+        const modal = document.getElementById('resultModal');
+        const currentId = modal.dataset.currentId;
+        
+        if (!currentId) {
+            alert('저장할 데이터를 찾을 수 없습니다.');
+            return;
+        }
+        
+        // 변경 감지
+        if (calculator.hasDetailedInfoChanged()) {
+            // 변경된 경우 확인 메시지 표시
+            if (confirm('저장하시겠습니까?')) {
+                const success = await calculator.saveDetailedInfo(parseInt(currentId));
+                if (success) {
+                    alert('상세 정보가 저장되었습니다.');
+                } else {
+                    alert('상세 정보 저장에 실패했습니다.');
+                }
+            }
+        } else {
+            // 변경되지 않은 경우에도 저장
+            const success = await calculator.saveDetailedInfo(parseInt(currentId));
+            if (success) {
+                alert('상세 정보가 저장되었습니다.');
+            } else {
+                alert('상세 정보 저장에 실패했습니다.');
+            }
+        }
     });
 
     // 폰트 모달 이벤트 리스너들
