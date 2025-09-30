@@ -1392,38 +1392,6 @@ function exportAllData() {
 }
 
 /**
- * CSV 내보내기 (결과값만)
- */
-function exportToCSV() {
-    const history = calculator.getHistory();
-    if (history.length === 0) {
-        alert('내보낼 데이터가 없습니다.');
-        return;
-    }
-
-    let csv = '시간,물건명,입지등급,임대안정성,접근성등급,시설등급,Market Value,Value-Add Potential,HBU Value,NOI,CapRate(%)\n';
-    history.forEach(item => {
-        csv += `${item.timestamp},${item.propertyName},${item.locationGrade}등급,${item.stabilityGrade}등급,${item.accessibilityGrade}등급,${item.facilityGrade}등급,${item.currentValue},${item.potentialValue},${item.growthValue},${item.noi},${item.capRate}\n`;
-    });
-
-    // UTF-8 BOM 추가 (Excel에서 한글 깨짐 방지)
-    const BOM = '\uFEFF';
-    const csvWithBOM = BOM + csv;
-    
-    const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `부동산_가치_계산_${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    alert('CSV 파일이 다운로드되었습니다.');
-}
-
-/**
  * 선택된 항목들 삭제
  */
 async function deleteSelectedItems() {
@@ -1953,7 +1921,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 버튼 이벤트들
     document.getElementById('exportAllData').addEventListener('click', exportAllData);
-    document.getElementById('exportCsv').addEventListener('click', exportToCSV);
     document.getElementById('deleteSelected').addEventListener('click', deleteSelectedItems);
     document.getElementById('loadSelected').addEventListener('click', loadSelectedItem);
     document.getElementById('loadResult').addEventListener('click', loadSelectedResult);
