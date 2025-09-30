@@ -463,7 +463,15 @@ class PropertyCalculator {
         const inputs = this.collectFormData();
         this.inputsStore[historyItem.id] = {
             inputs: inputs,
-            detailedInfo: null // 초기에는 상세 정보 없음
+            detailedInfo: {
+                investigatorName: '',
+                investigationYear: '',
+                investigationMonth: '',
+                investigationDay: '',
+                facilities: [],
+                confirmerName: '',
+                opinionText: ''
+            }
         };
         
         // 로컬 스토리지에 저장 (백업용)
@@ -490,7 +498,7 @@ class PropertyCalculator {
             parkingIncome: this.removeCommas(document.getElementById('parkingRevenue').value),
             otherIncome: this.removeCommas(document.getElementById('otherRevenue').value),
             facilityCosts: this.removeCommas(document.getElementById('managementFee').value),
-            managementReturnRate: document.getElementById('managementProfitRate').value,
+            managementReturnRate: document.getElementById('managementProfitRate').value || '0',
             capRate: document.getElementById('salesYield').value,
             locationGrade: document.getElementById('locationGrade').value,
             stabilityGrade: document.getElementById('stabilityGrade').value,
@@ -814,6 +822,49 @@ class PropertyCalculator {
     // ================== Firebase 관련 메서드들 ==================
     
     /**
+     * 입력 데이터 구조 마이그레이션 (기존 구조 → 새 구조)
+     */
+    migrateInputsData(data) {
+        const migratedData = {};
+        
+        for (const [id, item] of Object.entries(data)) {
+            if (item.inputs) {
+                // 이미 새 구조면 그대로 사용
+                migratedData[id] = {
+                    inputs: item.inputs,
+                    detailedInfo: item.detailedInfo || {
+                        investigatorName: '',
+                        investigationYear: '',
+                        investigationMonth: '',
+                        investigationDay: '',
+                        facilities: [],
+                        confirmerName: '',
+                        opinionText: ''
+                    }
+                };
+            } else {
+                // 기존 구조를 새 구조로 변환
+                // detailedInfo가 혹시 있다면 보존
+                migratedData[id] = {
+                    inputs: item,
+                    detailedInfo: item.detailedInfo || {
+                        investigatorName: '',
+                        investigationYear: '',
+                        investigationMonth: '',
+                        investigationDay: '',
+                        facilities: [],
+                        confirmerName: '',
+                        opinionText: ''
+                    }
+                };
+                console.log(`데이터 마이그레이션: ID ${id} (기존 구조 → 새 구조)`);
+            }
+        }
+        
+        return migratedData;
+    }
+    
+    /**
      * Firebase에서 데이터 로드
      */
     async loadDataFromFirebase() {
@@ -849,15 +900,38 @@ class PropertyCalculator {
 
             // 입력값 데이터 로드
             const inputsRef = ref(database, 'propertyCalculator/inputs');
-            onValue(inputsRef, (snapshot) => {
+            onValue(inputsRef, async (snapshot) => {
                 const data = snapshot.val();
+                let needsSave = false;
+                
                 if (data) {
-                    this.inputsStore = data;
+                    // 데이터 구조 마이그레이션
+                    const originalLength = Object.keys(data).length;
+                    this.inputsStore = this.migrateInputsData(data);
+                    const migratedLength = Object.keys(this.inputsStore).length;
+                    
+                    // 마이그레이션이 발생했는지 확인
+                    if (originalLength > 0) {
+                        const hasOldStructure = Object.values(data).some(item => !item.inputs);
+                        if (hasOldStructure) {
+                            needsSave = true;
+                            console.log('기존 구조 발견 - 마이그레이션 수행 후 저장');
+                        }
+                    }
+                    
                     console.log('Firebase에서 입력값 데이터 로드 완료');
                 } else {
                     console.log('Firebase에 입력값 데이터가 없습니다. 로컬 스토리지에서 로드');
                     // 로컬 스토리지에서 데이터 로드
-                    this.inputsStore = JSON.parse(localStorage.getItem('propertyInputs') || '{}');
+                    const localData = JSON.parse(localStorage.getItem('propertyInputs') || '{}');
+                    this.inputsStore = this.migrateInputsData(localData);
+                }
+                
+                // 마이그레이션된 데이터를 Firebase와 로컬에 저장
+                if (needsSave) {
+                    await this.saveInputsToFirebase(this.inputsStore);
+                    localStorage.setItem('propertyInputs', JSON.stringify(this.inputsStore));
+                    console.log('마이그레이션된 데이터 저장 완료');
                 }
             }, (error) => {
                 console.error('Firebase 입력값 데이터 로드 실패:', error);
@@ -1206,6 +1280,11 @@ function exportAllData() {
         return;
     }
 
+    // 디버그: inputsStore 확인
+    console.log('=== CSV 다운로드 디버그 ===');
+    console.log('History 항목 수:', history.length);
+    console.log('InputsStore:', calculator.inputsStore);
+
     // CSV 헤더 (사용자 요청 순서대로)
     let csv = '시간,물건명,물건 주소,' +
               '월간 임대료 총액/월,보증금 총액,광고수익/월,주차수익/월,기타수익/월,' +
@@ -1218,32 +1297,61 @@ function exportAllData() {
     history.forEach(item => {
         const inputData = calculator.inputsStore[item.id];
         
+        // 디버그: 각 항목별 데이터 확인
+        console.log(`\n항목 ID: ${item.id}`);
+        console.log('  물건명:', item.propertyName);
+        console.log('  inputData:', inputData);
+        
         // 기존 데이터 구조와 새 데이터 구조 모두 지원
         let inputs, detailedInfo;
         
         if (inputData) {
             if (inputData.inputs) {
                 // 새 구조: { inputs: {...}, detailedInfo: {...} }
-                inputs = inputData.inputs;
-                detailedInfo = inputData.detailedInfo || {};
+                inputs = inputData.inputs || {};
+                detailedInfo = inputData.detailedInfo;
+                console.log('  데이터 구조: 새 구조');
             } else {
                 // 기존 구조: { propertyName: ..., monthlyRent: ..., ... }
                 inputs = inputData;
-                detailedInfo = {};
+                detailedInfo = null;
+                console.log('  데이터 구조: 기존 구조');
             }
         } else {
             inputs = {};
-            detailedInfo = {};
+            detailedInfo = null;
+            console.log('  데이터 구조: inputData 없음');
         }
+        
+        console.log('  detailedInfo:', detailedInfo);
+        
+        // 상세 정보 안전하게 가져오기 (null 체크)
+        const investigatorName = detailedInfo?.investigatorName || '';
+        const investigationYear = detailedInfo?.investigationYear || '';
+        const investigationMonth = detailedInfo?.investigationMonth || '';
+        const investigationDay = detailedInfo?.investigationDay || '';
+        const facilities = detailedInfo?.facilities || [];
+        const confirmerName = detailedInfo?.confirmerName || '';
+        const opinionText = detailedInfo?.opinionText || '';
+        
+        console.log('  추출된 상세정보:', {
+            investigatorName,
+            investigationYear,
+            investigationMonth,
+            investigationDay,
+            facilities,
+            confirmerName,
+            opinionText
+        });
         
         // 조사일자 포맷팅
         let investigationDate = '';
-        if (detailedInfo.investigationYear) {
-            investigationDate = `${detailedInfo.investigationYear}년 ${detailedInfo.investigationMonth || ''}월 ${detailedInfo.investigationDay || ''}일`;
+        if (investigationYear) {
+            investigationDate = `${investigationYear}년 ${investigationMonth}월 ${investigationDay}일`;
         }
         
         // 확인시설 배열을 문자열로 변환
-        const facilities = detailedInfo.facilities ? detailedInfo.facilities.join('; ') : '';
+        const facilitiesStr = Array.isArray(facilities) && facilities.length > 0 ? facilities.join('; ') : '';
         
         // CSV 특수문자 이스케이프 처리 (쉼표, 따옴표, 줄바꿈)
         const escapeCSV = (str) => {
@@ -1262,7 +1370,7 @@ function exportAllData() {
         csv += `${item.locationGrade || ''},${item.stabilityGrade || ''},${item.accessibilityGrade || ''},${item.facilityGrade || ''}` + ',';
         csv += `${inputs.currentVacancy || ''}` + ',';
         csv += `${item.currentValue || ''},${item.potentialValue || ''},${item.growthValue || ''},${item.noi || ''},${item.capRate || ''}` + ',';
-        csv += `${escapeCSV(detailedInfo.investigatorName || '')},${escapeCSV(investigationDate)},${escapeCSV(facilities)},${escapeCSV(detailedInfo.confirmerName || '')},${escapeCSV(detailedInfo.opinionText || '')}`;
+        csv += `${escapeCSV(investigatorName)},${escapeCSV(investigationDate)},${escapeCSV(facilitiesStr)},${escapeCSV(confirmerName)},${escapeCSV(opinionText)}`;
         csv += '\n';
     });
 
